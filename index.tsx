@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type } from "@google/genai";
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 
 interface Flight {
     airline: string;
@@ -16,25 +16,70 @@ interface Location {
     lng: number;
 }
 
-interface Plan {
-    itinerary: {
-        title: string;
-        daily_summary: string;
-        suggested_activities: {
-            day: number;
-            activity: string;
-        }[];
-    };
-    costs: {
-        estimated_daily: string;
-        estimated_total: string;
-    };
-    checklist: {
-        task: string;
-        details: string;
+interface ChecklistItem {
+    task: string;
+    details: string;
+    completed: boolean;
+}
+
+interface WeatherInfo {
+    destination: string;
+    avg_temp_celsius: number;
+    forecast_summary: string;
+}
+
+interface FoodRecommendation {
+    name: string;
+    description: string;
+}
+
+interface ItineraryDestination {
+    destination_name: string;
+    destination_summary: string;
+    daily_plan: {
+        day: number;
+        activity: string;
     }[];
+    transport_tips: string;
+    safety_tips: string;
+    food_recommendations: FoodRecommendation[];
+}
+
+interface CostDetails {
+    accommodation: number;
+    food: number;
+    activities: number;
+    transport: number;
+    total_without_flights: number;
+}
+
+interface Plan {
+    itinerary: ItineraryDestination[];
+    costs: CostDetails;
+    checklist: ChecklistItem[];
     flights: Flight[];
     locations: Location[];
+    weather: WeatherInfo[];
+}
+
+type TripDetails = {
+    prediction: number | string;
+    type: string;
+    origin: string;
+    destinations: string[];
+    adults: number;
+    children: number;
+    startDate: string;
+    endDate: string;
+    class: string;
+    stopover: boolean;
+    tripType: string;
+};
+
+interface HistoryItem {
+  id: string;
+  title: string;
+  details: TripDetails;
 }
 
 const ApiKeyMissingScreen = () => (
@@ -51,8 +96,29 @@ const ApiKeyMissingScreen = () => (
     </>
 );
 
+const ResizeMap = ({ bounds }: { bounds: [number, number][] }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (bounds && bounds.length > 0) {
+            map.invalidateSize();
+            map.fitBounds(bounds, { padding: [50, 50] });
+        }
+    }, [bounds, map]);
+    return null;
+};
+
+const getWeatherIcon = (summary: string) => {
+    const lowerCaseSummary = summary.toLowerCase();
+    if (lowerCaseSummary.includes('sol') || lowerCaseSummary.includes('ensolarado') || lowerCaseSummary.includes('claro')) return '☀️';
+    if (lowerCaseSummary.includes('chuva') || lowerCaseSummary.includes('chuvoso')) return '🌧️';
+    if (lowerCaseSummary.includes('nuvem') || lowerCaseSummary.includes('nublado')) return '☁️';
+    if (lowerCaseSummary.includes('tempestade')) return '⛈️';
+    if (lowerCaseSummary.includes('neve')) return '❄️';
+    return '🌍'; // Default icon
+};
+
 const App = () => {
-    const [tripDetails, setTripDetails] = useState({
+    const [tripDetails, setTripDetails] = useState<TripDetails>({
         prediction: new Date().getFullYear() + 1,
         type: 'Internacional',
         origin: 'São Paulo',
@@ -70,6 +136,11 @@ const App = () => {
     const [error, setError] = useState('');
     const [plan, setPlan] = useState<Plan | null>(null);
     const [isSaved, setIsSaved] = useState(false);
+    const [searchHistory, setSearchHistory] = useState<HistoryItem[]>([]);
+    const [activeTab, setActiveTab] = useState('roteiro');
+    const [currentItineraryPage, setCurrentItineraryPage] = useState(0);
+    const [selectedFlight, setSelectedFlight] = useState<Flight | null>(null);
+
 
     // Filter state
     const [filters, setFilters] = useState({
@@ -88,16 +159,31 @@ const App = () => {
         try {
             const savedPlanData = localStorage.getItem('ernest-travel-plan');
             if (savedPlanData) {
-                const { plan: savedPlan, tripDetails: savedTripDetails }: { plan: Plan, tripDetails: any } = JSON.parse(savedPlanData);
+                const { plan: savedPlan, tripDetails: savedTripDetails, selectedFlight: savedFlight }: { plan: Plan, tripDetails: TripDetails, selectedFlight: Flight | null } = JSON.parse(savedPlanData);
                 if (savedPlan && savedTripDetails) {
-                    setPlan(savedPlan);
+                    const planWithCheckedState = {
+                        ...savedPlan,
+                        checklist: savedPlan.checklist.map(item => ({ ...item, completed: item.completed || false }))
+                    };
+                    setPlan(planWithCheckedState);
                     setTripDetails(savedTripDetails);
+                    setSelectedFlight(savedFlight || null);
                     setIsSaved(true);
                 }
             }
         } catch (err) {
             console.error("Failed to load or parse saved plan from localStorage", err);
             localStorage.removeItem('ernest-travel-plan');
+        }
+
+        try {
+            const savedHistory = localStorage.getItem('ernest-travel-history');
+            if (savedHistory) {
+                setSearchHistory(JSON.parse(savedHistory));
+            }
+        } catch (err) {
+            console.error("Failed to load history from localStorage", err);
+            localStorage.removeItem('ernest-travel-history');
         }
     }, []);
 
@@ -173,6 +259,44 @@ const App = () => {
         }));
     };
 
+    const handleLoadHistoryItem = (itemDetails: TripDetails) => {
+        setTripDetails(itemDetails);
+        setPlan(null);
+        setError('');
+        setIsSaved(false);
+        setCurrentItineraryPage(0);
+        setSelectedFlight(null);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleClearHistory = () => {
+        if (window.confirm("Tem certeza que deseja limpar o histórico de pesquisas?")) {
+            setSearchHistory([]);
+            localStorage.removeItem('ernest-travel-history');
+        }
+    };
+
+    const handleChecklistToggle = (toggledIndex: number) => {
+        if (!plan) return;
+        const newChecklist = plan.checklist.map((item, index) => {
+            if (index === toggledIndex) {
+                return { ...item, completed: !item.completed };
+            }
+            return item;
+        });
+        setPlan(prevPlan => ({ ...prevPlan!, checklist: newChecklist }));
+        setIsSaved(false); // Indicate there are unsaved changes
+    };
+
+    const handleSelectFlight = (flight: Flight) => {
+        if (selectedFlight && JSON.stringify(selectedFlight) === JSON.stringify(flight)) {
+            setSelectedFlight(null); // Deselect if the same flight is clicked again
+        } else {
+            setSelectedFlight(flight);
+        }
+        setIsSaved(false);
+    };
+
     const generatePlan = async () => {
         if (!process.env.API_KEY) {
             setError('A chave de API não está configurada. Por favor, configure a variável de ambiente API_KEY.');
@@ -183,6 +307,7 @@ const App = () => {
         setError('');
         setPlan(null);
         setIsSaved(false);
+        setSelectedFlight(null);
 
         if (tripDetails.startDate && tripDetails.endDate) {
             const startDate = new Date(tripDetails.startDate);
@@ -201,18 +326,35 @@ const App = () => {
                 type: Type.OBJECT,
                 properties: {
                     itinerary: {
-                        type: Type.OBJECT,
-                        properties: {
-                            title: { type: Type.STRING, description: "Título do roteiro" },
-                            daily_summary: { type: Type.STRING, description: "Resumo diário da viagem" },
-                            suggested_activities: {
-                                type: Type.ARRAY,
-                                description: "Lista de atividades sugeridas",
-                                items: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        day: { type: Type.INTEGER, description: "Dia da atividade" },
-                                        activity: { type: Type.STRING, description: "Descrição da atividade" },
+                        type: Type.ARRAY,
+                        description: "Roteiro de viagem detalhado, separado por cada cidade de destino.",
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                destination_name: { type: Type.STRING, description: "Nome da cidade de destino." },
+                                destination_summary: { type: Type.STRING, description: "Um resumo breve e envolvente sobre o destino." },
+                                daily_plan: {
+                                    type: Type.ARRAY,
+                                    description: "Plano de atividades diárias para este destino.",
+                                    items: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            day: { type: Type.INTEGER, description: "Número do dia da atividade (contando desde o início da viagem)." },
+                                            activity: { type: Type.STRING, description: "Descrição da atividade para aquele dia." },
+                                        },
+                                    },
+                                },
+                                transport_tips: { type: Type.STRING, description: "Dicas de como se locomover na cidade (transporte público, apps, etc.)." },
+                                safety_tips: { type: Type.STRING, description: "Dicas de segurança específicas para o destino." },
+                                food_recommendations: {
+                                    type: Type.ARRAY,
+                                    description: "Recomendações de pratos ou comidas típicas locais.",
+                                    items: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            name: { type: Type.STRING, description: "Nome do prato ou comida." },
+                                            description: { type: Type.STRING, description: "Breve descrição do prato." },
+                                        },
                                     },
                                 },
                             },
@@ -220,9 +362,13 @@ const App = () => {
                     },
                     costs: {
                         type: Type.OBJECT,
+                        description: "Estimativa de custos detalhada em Reais (BRL), como números.",
                         properties: {
-                            estimated_daily: { type: Type.STRING, description: "Custo diário estimado em Reais (BRL)" },
-                            estimated_total: { type: Type.STRING, description: "Custo total estimado em Reais (BRL)" },
+                            accommodation: { type: Type.NUMBER, description: "Custo total estimado com hospedagem." },
+                            food: { type: Type.NUMBER, description: "Custo total estimado com alimentação." },
+                            activities: { type: Type.NUMBER, description: "Custo total estimado com atividades e passeios." },
+                            transport: { type: Type.NUMBER, description: "Custo total estimado com transporte local." },
+                            total_without_flights: { type: Type.NUMBER, description: "Custo total estimado da viagem, excluindo voos internacionais/nacionais principais." },
                         },
                     },
                     checklist: {
@@ -261,22 +407,41 @@ const App = () => {
                             },
                             required: ['city', 'lat', 'lng']
                         }
+                    },
+                    weather: {
+                        type: Type.ARRAY,
+                        description: "Previsão do tempo para cada cidade de destino durante o período da viagem.",
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                destination: { type: Type.STRING, description: "Nome da cidade de destino." },
+                                avg_temp_celsius: { type: Type.NUMBER, description: "Temperatura média em graus Celsius." },
+                                forecast_summary: { type: Type.STRING, description: "Resumo da previsão (ex: 'Ensolarado com poucas nuvens', 'Chuva esparsa')." }
+                            }
+                        }
                     }
                 },
             };
 
-            const prompt = `Como Ernest, um agente de viagens experiente, crie um plano de viagem detalhado com base nas seguintes informações. A resposta deve ser amigável e útil.
-            - Previsão da viagem: ${tripDetails.prediction}
-            - Tipo: ${tripDetails.type}
-            - Tipo de Viagem: ${tripDetails.tripType}
-            - Origem: ${tripDetails.origin}
-            - Destinos: ${tripDetails.destinations.join(', ')}
-            - Passageiros: ${tripDetails.adults} adultos, ${tripDetails.children} crianças
-            - Período: de ${tripDetails.startDate} a ${tripDetails.endDate}
-            - Classe da Passagem: ${tripDetails.class}
-            - Incluir Stopover: ${tripDetails.stopover ? 'Sim' : 'Não'}
-            
-            Retorne um objeto JSON seguindo o schema fornecido. O preço do voo deve ser um número em Reais Brasileiros (BRL), sem símbolos de moeda ou separadores de milhar (ex: 3500.00). O número de paradas deve ser um número inteiro (ex: 0 para direto). Inclua as coordenadas geográficas (latitude e longitude) para a cidade de origem e cada um dos destinos em ordem de viagem. Seja criativo e realista nas sugestões, personalizando o roteiro com base no tipo de viagem.`;
+            const prompt = `Como Ernest, um agente de viagens experiente e amigável com um estilo de escrita de blog, crie um plano de viagem detalhado. Para CADA destino, forneça um roteiro completo.
+- Previsão da viagem: ${tripDetails.prediction}
+- Tipo: ${tripDetails.type}
+- Tipo de Viagem: ${tripDetails.tripType}
+- Origem: ${tripDetails.origin}
+- Destinos: ${tripDetails.destinations.join(', ')}
+- Passageiros: ${tripDetails.adults} adultos, ${tripDetails.children} crianças
+- Período: de ${tripDetails.startDate} a ${tripDetails.endDate}
+- Classe da Passagem: ${tripDetails.class}
+- Incluir Stopover: ${tripDetails.stopover ? 'Sim' : 'Não'}
+
+Para cada destino, inclua:
+1.  Um resumo envolvente do destino.
+2.  Um plano diário de atividades.
+3.  Dicas úteis de transporte local.
+4.  Dicas importantes de segurança.
+5.  Recomendações da culinária local com nome e descrição dos pratos.
+
+Retorne um objeto JSON seguindo o schema fornecido. Todos os custos devem ser números em Reais Brasileiros (BRL), sem símbolos (ex: 3500.00). O número de paradas deve ser um inteiro (ex: 0). Inclua coordenadas geográficas para origem e destinos e a previsão do tempo.`;
             
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash",
@@ -297,8 +462,35 @@ const App = () => {
             }
 
             try {
-                const jsonResponse: Plan = JSON.parse(responseText);
-                setPlan(jsonResponse);
+                const jsonResponse = JSON.parse(responseText);
+                const planWithChecklistState: Plan = {
+                    ...jsonResponse,
+                    checklist: jsonResponse.checklist.map((item: any) => ({ ...item, completed: false }))
+                };
+
+                setPlan(planWithChecklistState);
+                setActiveTab('roteiro');
+                setCurrentItineraryPage(0);
+
+                const newHistoryItem: HistoryItem = {
+                    id: new Date().toISOString(),
+                    title: `${tripDetails.origin} → ${tripDetails.destinations.join(', ')}`,
+                    details: { ...tripDetails }
+                };
+
+                setSearchHistory(prevHistory => {
+                    const filteredHistory = prevHistory.filter(item => 
+                        JSON.stringify(item.details) !== JSON.stringify(newHistoryItem.details)
+                    );
+                    const updatedHistory = [newHistoryItem, ...filteredHistory].slice(0, 5);
+                    try {
+                        localStorage.setItem('ernest-travel-history', JSON.stringify(updatedHistory));
+                    } catch (e) {
+                        console.error("Failed to save history to localStorage", e);
+                    }
+                    return updatedHistory;
+                });
+
             } catch (parseError) {
                 console.error("Failed to parse JSON response from AI:", parseError);
                 console.error("Raw response text:", responseText);
@@ -316,7 +508,7 @@ const App = () => {
     const handleSavePlan = () => {
         if (plan) {
             try {
-                const dataToSave = JSON.stringify({ plan, tripDetails });
+                const dataToSave = JSON.stringify({ plan, tripDetails, selectedFlight });
                 localStorage.setItem('ernest-travel-plan', dataToSave);
                 setIsSaved(true);
             } catch (err) {
@@ -337,7 +529,7 @@ const App = () => {
 
     const handleDownloadChecklist = () => {
         if (!plan?.checklist) return;
-        const content = plan.checklist.map(item => `${item.task}\n- ${item.details}\n`).join('\n');
+        const content = plan.checklist.map(item => `[${item.completed ? 'x' : ' '}] ${item.task}\n- ${item.details}\n`).join('\n');
         downloadFile(content, 'checklist_viagem.txt', 'text/plain');
     };
 
@@ -349,6 +541,18 @@ const App = () => {
         downloadFile(csvContent, 'opcoes_voo.csv', 'text/csv;charset=utf-8;');
     };
 
+    const formatCurrency = (value?: number) => {
+        if (typeof value !== 'number') return 'N/A';
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+    };
+
+    const totalCostWithFlight = useMemo(() => {
+        if (!plan?.costs) return 0;
+        const baseCost = plan.costs.total_without_flights || 0;
+        const flightCost = selectedFlight?.price || 0;
+        return baseCost + flightCost;
+    }, [plan?.costs, selectedFlight]);
+
     return (
         <>
             <header>
@@ -356,89 +560,115 @@ const App = () => {
             </header>
             <div className="container">
                 <main>
-                    <aside className="planner-form">
+                    <section className="planner-form">
                         <h2>Crie o Roteiro da Sua Próxima Aventura</h2>
-                        <div className="form-group">
-                            <label htmlFor="prediction">Previsão da Viagem</label>
-                            <input type="text" id="prediction" name="prediction" value={tripDetails.prediction} onChange={handleInputChange} placeholder="Ex: 2026" />
-                        </div>
-                        <div className="form-group">
-                            <label>Opção da Viagem</label>
-                            <div className="radio-group">
-                                <label><input type="radio" name="type" value="Nacional" checked={tripDetails.type === 'Nacional'} onChange={handleInputChange} /> Nacional</label>
-                                <label><input type="radio" name="type" value="Internacional" checked={tripDetails.type === 'Internacional'} onChange={handleInputChange} /> Internacional</label>
+                        <div className="form-grid">
+                            <div className="form-group">
+                                <label htmlFor="prediction">Previsão da Viagem</label>
+                                <input type="text" id="prediction" name="prediction" value={tripDetails.prediction} onChange={handleInputChange} placeholder="Ex: 2026" />
                             </div>
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="origin">Origem</label>
-                            <input type="text" id="origin" name="origin" value={tripDetails.origin} onChange={handleInputChange} />
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="destination">Destinos</label>
-                            <div className="destinations-group">
-                                <input type="text" id="destination" value={currentDestination} onChange={(e) => setCurrentDestination(e.target.value)} placeholder="Adicione um destino"/>
-                                <button className="btn btn-sm" onClick={handleAddDestination} type="button">Adicionar</button>
+                            <div className="form-group">
+                                <label>Opção da Viagem</label>
+                                <div className="radio-group">
+                                    <label><input type="radio" name="type" value="Nacional" checked={tripDetails.type === 'Nacional'} onChange={handleInputChange} /> Nacional</label>
+                                    <label><input type="radio" name="type" value="Internacional" checked={tripDetails.type === 'Internacional'} onChange={handleInputChange} /> Internacional</label>
+                                </div>
                             </div>
-                            <ul className="destinations-list">
-                                {tripDetails.destinations.map(dest => (
-                                    <li key={dest} className="destination-tag">
-                                        {dest} <button onClick={() => handleRemoveDestination(dest)}>&times;</button>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                         <div className="form-group passengers-group">
-                            <div>
-                                <label htmlFor="adults">Adultos</label>
-                                <input type="number" id="adults" name="adults" min="1" value={tripDetails.adults} onChange={handleInputChange} />
+                            <div className="form-group">
+                                <label htmlFor="origin">Origem</label>
+                                <input type="text" id="origin" name="origin" value={tripDetails.origin} onChange={handleInputChange} />
                             </div>
-                            <div>
-                                <label htmlFor="children">Crianças</label>
-                                <input type="number" id="children" name="children" min="0" value={tripDetails.children} onChange={handleInputChange} />
+                             <div className="form-group full-width">
+                                <label htmlFor="destination">Destinos</label>
+                                <div className="destinations-group">
+                                    <input type="text" id="destination" value={currentDestination} onChange={(e) => setCurrentDestination(e.target.value)} placeholder="Adicione um destino"/>
+                                    <button className="btn btn-sm" onClick={handleAddDestination} type="button">Adicionar</button>
+                                </div>
+                                <ul className="destinations-list">
+                                    {tripDetails.destinations.map(dest => (
+                                        <li key={dest} className="destination-tag">
+                                            {dest} <button onClick={() => handleRemoveDestination(dest)}>&times;</button>
+                                        </li>
+                                    ))}
+                                </ul>
                             </div>
-                        </div>
-                        <div className="form-group date-range-group">
-                            <div>
-                                <label htmlFor="startDate">Data de Início</label>
-                                <input type="date" id="startDate" name="startDate" value={tripDetails.startDate} onChange={handleInputChange} />
+                             <div className="form-group passengers-group">
+                                <div>
+                                    <label htmlFor="adults">Adultos</label>
+                                    <input type="number" id="adults" name="adults" min="1" value={tripDetails.adults} onChange={handleInputChange} />
+                                </div>
+                                <div>
+                                    <label htmlFor="children">Crianças</label>
+                                    <input type="number" id="children" name="children" min="0" value={tripDetails.children} onChange={handleInputChange} />
+                                </div>
                             </div>
-                            <div>
-                                <label htmlFor="endDate">Data de Fim</label>
-                                <input type="date" id="endDate" name="endDate" value={tripDetails.endDate} onChange={handleInputChange} />
+                            <div className="form-group date-range-group">
+                                <div>
+                                    <label htmlFor="startDate">Data de Início</label>
+                                    <input type="date" id="startDate" name="startDate" value={tripDetails.startDate} onChange={handleInputChange} />
+                                </div>
+                                <div>
+                                    <label htmlFor="endDate">Data de Fim</label>
+                                    <input type="date" id="endDate" name="endDate" value={tripDetails.endDate} onChange={handleInputChange} />
+                                </div>
                             </div>
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="tripType">Tipo de Viagem</label>
-                            <select id="tripType" name="tripType" value={tripDetails.tripType} onChange={handleInputChange}>
-                                <option>Aventura</option>
-                                <option>Relaxante</option>
-                                <option>Cultural</option>
-                                <option>Gastronômica</option>
-                            </select>
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="class">Classe das Passagens</label>
-                            <select id="class" name="class" value={tripDetails.class} onChange={handleInputChange}>
-                                <option>Econômica</option>
-                                <option>Executiva</option>
-                                <option>Primeira Classe</option>
-                            </select>
-                        </div>
-                        <div className="form-group checkbox-group">
-                            <input type="checkbox" id="stopover" name="stopover" checked={tripDetails.stopover} onChange={handleInputChange} />
-                            <label htmlFor="stopover">Incluir busca por Stopover</label>
+                            <div className="form-group">
+                                <label htmlFor="tripType">Tipo de Viagem</label>
+                                <select id="tripType" name="tripType" value={tripDetails.tripType} onChange={handleInputChange}>
+                                    <option>Aventura</option>
+                                    <option>Relaxante</option>
+                                    <option>Cultural</option>
+                                    <option>Gastronômica</option>
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="class">Classe das Passagens</label>
+                                <select id="class" name="class" value={tripDetails.class} onChange={handleInputChange}>
+                                    <option>Econômica</option>
+                                    <option>Executiva</option>
+                                    <option>Primeira Classe</option>
+                                </select>
+                            </div>
+                            <div className="form-group checkbox-group">
+                                <input type="checkbox" id="stopover" name="stopover" checked={tripDetails.stopover} onChange={handleInputChange} />
+                                <label htmlFor="stopover">Incluir busca por Stopover</label>
+                            </div>
                         </div>
                         <button className="btn" onClick={generatePlan} disabled={loading}>
                             {loading ? 'Planejando...' : 'Planejar Viagem'}
                         </button>
-                    </aside>
+
+                        {searchHistory.length > 0 && (
+                            <div className="search-history">
+                                <h3>Histórico de Pesquisas</h3>
+                                <ul className="search-history-list">
+                                    {searchHistory.map((item) => (
+                                        <li 
+                                            key={item.id} 
+                                            className="search-history-item" 
+                                            onClick={() => handleLoadHistoryItem(item.details)} 
+                                            title="Recarregar esta pesquisa"
+                                            tabIndex={0}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') handleLoadHistoryItem(item.details) }}
+                                        >
+                                            <span>{item.title}</span>
+                                            <span>{item.details.destinations.length} destino(s)</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                                <button className="btn-clear-history" onClick={handleClearHistory}>
+                                    Limpar Histórico
+                                </button>
+                            </div>
+                        )}
+                    </section>
                     <section className="results-display">
                         {loading && <div className="loading-spinner"></div>}
                         {error && <p className="error-message">{error}</p>}
                         {!loading && !plan && !error && (
                              <div className="results-placeholder">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.25-6.362m-16.5 0A9.004 9.004 0 0112 3c1.356 0 2.64d.31 3.805.872m-7.61 14.128A9.004 9.004 0 0112 21c-1.356 0-2.64-.31-3.805-.872m7.61-14.128L12 12.75m-4.5-4.5L12 12.75m0 0l4.5 4.5m-4.5-4.5L7.5 17.25" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.25-6.362m-16.5 0A9.004 9.004 0 0112 3c1.356 0 2.64.31 3.805.872m-7.61 14.128A9.004 9.004 0 0112 21c-1.356 0-2.64-.31-3.805-.872m7.61-14.128L12 12.75m-4.5-4.5L12 12.75m0 0l4.5 4.5m-4.5-4.5L7.5 17.25" />
                                 </svg>
                                 <h3>Seu guia de viagem personalizado aparecerá aqui.</h3>
                                 <p>Preencha os detalhes ao lado para começar a planejar sua próxima aventura!</p>
@@ -454,131 +684,273 @@ const App = () => {
                                         </button>
                                     </h3>
                                     <p><strong>Rota:</strong> {tripDetails.origin} → {tripDetails.destinations.join(' → ')} → {tripDetails.origin}</p>
-                                    <p><strong>Custo Diário Estimado:</strong> {plan.costs.estimated_daily}</p>
-                                    <p><strong>Custo Total Estimado (sem voos):</strong> {plan.costs.estimated_total}</p>
+                                    <p><strong>Custo Total Estimado (com voo):</strong> <span className="total-cost">{formatCurrency(totalCostWithFlight)}</span></p>
                                 </div>
 
-                                {plan.locations && plan.locations.length > 1 && (
-                                    <div className="result-card route-map">
-                                        <h3>Visualização da Rota</h3>
-                                        <MapContainer 
-                                            bounds={plan.locations.map(loc => [loc.lat, loc.lng])} 
-                                            scrollWheelZoom={false} 
-                                            style={{ height: '400px', width: '100%', borderRadius: '8px' }}
-                                        >
-                                            <TileLayer
-                                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                            />
-                                            {plan.locations.map((loc, index) => (
-                                                <Marker key={index} position={[loc.lat, loc.lng]}>
-                                                    <Popup>{loc.city}</Popup>
-                                                </Marker>
-                                            ))}
-                                            <Polyline 
-                                                positions={plan.locations.map(loc => [loc.lat, loc.lng])}
-                                                color="#005a9e"
-                                            />
-                                        </MapContainer>
-                                    </div>
-                                )}
-
-                                <div className="result-card">
-                                    <h3>{plan.itinerary.title}</h3>
-                                    <p>{plan.itinerary.daily_summary}</p>
-                                    <br/>
-                                    {plan.itinerary.suggested_activities.map(item => (
-                                        <div key={item.day} className="checklist-item">
-                                            <strong>Dia {item.day}</strong>
-                                            <p>{item.activity}</p>
-                                        </div>
-                                    ))}
+                                <div className="tabs">
+                                    <button className={`tab-item ${activeTab === 'roteiro' ? 'active' : ''}`} onClick={() => setActiveTab('roteiro')}>Roteiro Detalhado</button>
+                                    <button className={`tab-item ${activeTab === 'orcamento' ? 'active' : ''}`} onClick={() => setActiveTab('orcamento')}>Orçamento</button>
+                                    <button className={`tab-item ${activeTab === 'checklist' ? 'active' : ''}`} onClick={() => setActiveTab('checklist')}>Checklist</button>
+                                    <button className={`tab-item ${activeTab === 'clima' ? 'active' : ''}`} onClick={() => setActiveTab('clima')}>Previsão do Tempo</button>
+                                    <button className={`tab-item ${activeTab === 'voos' ? 'active' : ''}`} onClick={() => setActiveTab('voos')}>Opções de Voo</button>
+                                    <button className={`tab-item ${activeTab === 'mapa' ? 'active' : ''}`} onClick={() => setActiveTab('mapa')}>Mapa da Rota</button>
                                 </div>
                                 
-                                <div className="result-card">
-                                    <h3>
-                                        Checklist de Planejamento
-                                        <button className="download-btn" onClick={handleDownloadChecklist}>Baixar Checklist</button>
-                                    </h3>
-                                    {plan.checklist.map(item => (
-                                        <div key={item.task} className="checklist-item">
-                                            <strong>{item.task}</strong>
-                                            <p>{item.details}</p>
-                                        </div>
-                                    ))}
-                                </div>
+                                <div className="tab-content">
+                                    {activeTab === 'roteiro' && plan.itinerary && plan.itinerary.length > 0 && (
+                                        <div className="result-card">
+                                            {(() => {
+                                                const currentItinerary = plan.itinerary[currentItineraryPage];
+                                                if (!currentItinerary) return <p>Roteiro indisponível.</p>;
+                                                return (
+                                                    <>
+                                                        <h3>Roteiro para: {currentItinerary.destination_name}</h3>
+                                                        <p>{currentItinerary.destination_summary}</p>
+                                                        
+                                                        <div className="itinerary-section">
+                                                            <h4>Plano Diário</h4>
+                                                            {currentItinerary.daily_plan.map(item => (
+                                                                <div key={`${item.day}-${item.activity}`} className="checklist-item">
+                                                                    <strong>Dia {item.day}</strong>
+                                                                    <p>{item.activity}</p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
 
-                                <div className="result-card">
-                                    <h3>
-                                        Opções de Voo Encontradas
-                                        <button className="download-btn" onClick={handleDownloadFlights}>Baixar CSV</button>
-                                    </h3>
-                                    <div className="filters-container">
-                                        <div className="filter-group">
-                                            <label htmlFor="airline">Companhia Aérea</label>
-                                            <select name="airline" id="airline" value={filters.airline} onChange={handleFilterChange}>
-                                                <option value="all">Todas</option>
-                                                {airlines.map(name => <option key={name} value={name}>{name}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="filter-group">
-                                            <label htmlFor="stops">Paradas</label>
-                                            <select name="stops" id="stops" value={filters.stops} onChange={handleFilterChange}>
-                                                <option value="all">Qualquer</option>
-                                                <option value="0">Direto</option>
-                                                <option value="1">1 Parada</option>
-                                                <option value="2">2+ Paradas</option>
-                                            </select>
-                                        </div>
-                                        <div className="filter-group">
-                                            <label htmlFor="maxPrice">Preço Máximo (R$)</label>
-                                            <input type="number" name="maxPrice" id="maxPrice" value={filters.maxPrice} onChange={handleFilterChange} placeholder="Ex: 5000" />
-                                        </div>
-                                    </div>
-                                    <table className="flights-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Companhia Aérea</th>
-                                                <th>Paradas</th>
-                                                <th>Preço (Estimado)</th>
-                                                <th>Classe</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {displayedFlights.map((flight, index) => {
-                                                const flightRow = (
-                                                    <tr key={index}>
-                                                        <td>
-                                                           <a href={`https://www.google.com/search?q=${encodeURIComponent('flights from ' + tripDetails.origin + ' to ' + tripDetails.destinations[0] + ' with ' + flight.airline)}`} target="_blank" rel="noopener noreferrer">
-                                                                {flight.airline}
-                                                            </a>
-                                                        </td>
-                                                        <td>{flight.stops === 0 ? 'Direto' : `${flight.stops} parada(s)`}</td>
-                                                        <td>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(flight.price)}</td>
-                                                        <td>{flight.class}</td>
-                                                    </tr>
+                                                        <div className="itinerary-section tips-grid">
+                                                           <div className="tip-card">
+                                                                <h4>✈️ Transporte</h4>
+                                                                <p>{currentItinerary.transport_tips}</p>
+                                                           </div>
+                                                           <div className="tip-card">
+                                                                <h4>🛡️ Segurança</h4>
+                                                                <p>{currentItinerary.safety_tips}</p>
+                                                           </div>
+                                                        </div>
+
+                                                        <div className="itinerary-section">
+                                                            <h4>Culinária Local 🍽️</h4>
+                                                             <ul className="food-list">
+                                                                {currentItinerary.food_recommendations.map(food => (
+                                                                    <li key={food.name}>
+                                                                        <strong>{food.name}:</strong> {food.description}
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    </>
                                                 );
+                                            })()}
+                                            
+                                            <div className="itinerary-pagination">
+                                                <button 
+                                                    onClick={() => setCurrentItineraryPage(p => p - 1)} 
+                                                    disabled={currentItineraryPage === 0}
+                                                    className="pagination-btn"
+                                                >
+                                                    &larr; Anterior
+                                                </button>
+                                                <span>{currentItineraryPage + 1} de {plan.itinerary.length}</span>
+                                                <button 
+                                                    onClick={() => setCurrentItineraryPage(p => p + 1)} 
+                                                    disabled={currentItineraryPage === plan.itinerary.length - 1}
+                                                    className="pagination-btn"
+                                                >
+                                                    Próximo &rarr;
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
 
-                                                if (displayedFlights.length === index + 1) {
-                                                     return (
-                                                        <tr ref={lastFlightElementRef} key={`last-${index}`}>
-                                                             <td>
-                                                                <a href={`https://www.google.com/search?q=${encodeURIComponent('flights from ' + tripDetails.origin + ' to ' + tripDetails.destinations[0] + ' with ' + flight.airline)}`} target="_blank" rel="noopener noreferrer">
-                                                                    {flight.airline}
-                                                                </a>
-                                                            </td>
-                                                            <td>{flight.stops === 0 ? 'Direto' : `${flight.stops} parada(s)`}</td>
-                                                            <td>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(flight.price)}</td>
-                                                            <td>{flight.class}</td>
-                                                        </tr>
+                                    {activeTab === 'orcamento' && (
+                                        <div className="result-card">
+                                            <h3>Detalhamento do Orçamento</h3>
+                                            <div className="budget-summary">
+                                                <div className="budget-item"><span>Hospedagem</span> <span>{formatCurrency(plan.costs.accommodation)}</span></div>
+                                                <div className="budget-item"><span>Alimentação</span> <span>{formatCurrency(plan.costs.food)}</span></div>
+                                                <div className="budget-item"><span>Atividades</span> <span>{formatCurrency(plan.costs.activities)}</span></div>
+                                                <div className="budget-item"><span>Transporte Local</span> <span>{formatCurrency(plan.costs.transport)}</span></div>
+                                                <div className="budget-item"><span>Voo Selecionado</span> <span>{formatCurrency(selectedFlight?.price)}</span></div>
+                                                <div className="budget-item total"><span>Custo Total Estimado</span> <span>{formatCurrency(totalCostWithFlight)}</span></div>
+                                            </div>
+                                            <h4>Distribuição de Custos</h4>
+                                            <div className="budget-chart">
+                                                {Object.entries({
+                                                    'Hospedagem': plan.costs.accommodation,
+                                                    'Alimentação': plan.costs.food,
+                                                    'Atividades': plan.costs.activities,
+                                                    'Transporte': plan.costs.transport,
+                                                    'Voo': selectedFlight?.price || 0,
+                                                }).map(([key, value]) => {
+                                                    if (value <= 0) return null;
+                                                    const percentage = totalCostWithFlight > 0 ? (value / totalCostWithFlight) * 100 : 0;
+                                                    return (
+                                                        <div key={key} className="chart-item">
+                                                            <div className="chart-label">{key}</div>
+                                                            <div className="chart-bar-container">
+                                                                <div className="chart-bar" style={{ width: `${percentage}%` }}>
+                                                                    {formatCurrency(value)}
+                                                                </div>
+                                                            </div>
+                                                        </div>
                                                     )
-                                                }
-                                                return flightRow;
-                                            })}
-                                        </tbody>
-                                    </table>
-                                    {isLoadingMore && <p className="loading-more">Carregando mais voos...</p>}
-                                    {!isLoadingMore && displayedFlights.length === 0 && <p className="loading-more">Nenhum voo encontrado com os filtros selecionados.</p>}
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeTab === 'checklist' && (
+                                        <div className="result-card">
+                                            <h3>
+                                                Checklist de Planejamento
+                                                <button className="download-btn" onClick={handleDownloadChecklist}>Baixar Checklist</button>
+                                            </h3>
+                                            {plan.checklist.map((item, index) => (
+                                                <div key={item.task} className={`checklist-item interactive ${item.completed ? 'completed' : ''}`}>
+                                                    <input 
+                                                        type="checkbox" 
+                                                        id={`task-${index}`} 
+                                                        checked={item.completed} 
+                                                        onChange={() => handleChecklistToggle(index)} 
+                                                    />
+                                                    <label htmlFor={`task-${index}`}>
+                                                        <strong>{item.task}</strong>
+                                                        <p>{item.details}</p>
+                                                    </label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    
+                                    {activeTab === 'clima' && (
+                                        <div className="result-card">
+                                            <h3>Previsão do Tempo para os Destinos</h3>
+                                            <div className="weather-grid">
+                                                {plan.weather?.map((w, index) => (
+                                                    <div key={index} className="weather-card">
+                                                        <div className="weather-icon">{getWeatherIcon(w.forecast_summary)}</div>
+                                                        <h4>{w.destination}</h4>
+                                                        <p className="weather-temp">{Math.round(w.avg_temp_celsius)}°C</p>
+                                                        <p>{w.forecast_summary}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeTab === 'voos' && (
+                                        <div className="result-card">
+                                            <h3>
+                                                Opções de Voo Encontradas
+                                                <button className="download-btn" onClick={handleDownloadFlights}>Baixar CSV</button>
+                                            </h3>
+                                            <div className="filters-container">
+                                                <div className="filter-group">
+                                                    <label htmlFor="airline">Companhia Aérea</label>
+                                                    <select name="airline" id="airline" value={filters.airline} onChange={handleFilterChange}>
+                                                        <option value="all">Todas</option>
+                                                        {airlines.map(name => <option key={name} value={name}>{name}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div className="filter-group">
+                                                    <label htmlFor="stops">Paradas</label>
+                                                    <select name="stops" id="stops" value={filters.stops} onChange={handleFilterChange}>
+                                                        <option value="all">Qualquer</option>
+                                                        <option value="0">Direto</option>
+                                                        <option value="1">1 Parada</option>
+                                                        <option value="2">2+ Paradas</option>
+                                                    </select>
+                                                </div>
+                                                <div className="filter-group">
+                                                    <label htmlFor="maxPrice">Preço Máximo (R$)</label>
+                                                    <input type="number" name="maxPrice" id="maxPrice" value={filters.maxPrice} onChange={handleFilterChange} placeholder="Ex: 5000" />
+                                                </div>
+                                            </div>
+                                            <table className="flights-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Companhia Aérea</th>
+                                                        <th>Paradas</th>
+                                                        <th>Preço (Estimado)</th>
+                                                        <th>Classe</th>
+                                                        <th>Ação</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {displayedFlights.map((flight, index) => {
+                                                        const isSelected = selectedFlight && JSON.stringify(selectedFlight) === JSON.stringify(flight);
+                                                        const flightRow = (
+                                                            <tr key={index} className={isSelected ? 'selected' : ''}>
+                                                                <td>
+                                                                <a href={`https://www.google.com/search?q=${encodeURIComponent('flights from ' + tripDetails.origin + ' to ' + tripDetails.destinations[0] + ' with ' + flight.airline)}`} target="_blank" rel="noopener noreferrer">
+                                                                        {flight.airline}
+                                                                    </a>
+                                                                </td>
+                                                                <td>{flight.stops === 0 ? 'Direto' : `${flight.stops} parada(s)`}</td>
+                                                                <td>{formatCurrency(flight.price)}</td>
+                                                                <td>{flight.class}</td>
+                                                                <td>
+                                                                    <button onClick={() => handleSelectFlight(flight)} className="btn-select-flight">
+                                                                        {isSelected ? 'Selecionado' : 'Selecionar'}
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+
+                                                        if (displayedFlights.length === index + 1) {
+                                                            return (
+                                                                <tr ref={lastFlightElementRef} key={`last-${index}`} className={isSelected ? 'selected' : ''}>
+                                                                    <td>
+                                                                        <a href={`https://www.google.com/search?q=${encodeURIComponent('flights from ' + tripDetails.origin + ' to ' + tripDetails.destinations[0] + ' with ' + flight.airline)}`} target="_blank" rel="noopener noreferrer">
+                                                                            {flight.airline}
+                                                                        </a>
+                                                                    </td>
+                                                                    <td>{flight.stops === 0 ? 'Direto' : `${flight.stops} parada(s)`}</td>
+                                                                    <td>{formatCurrency(flight.price)}</td>
+                                                                    <td>{flight.class}</td>
+                                                                    <td>
+                                                                        <button onClick={() => handleSelectFlight(flight)} className="btn-select-flight">
+                                                                            {isSelected ? 'Selecionado' : 'Selecionar'}
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            )
+                                                        }
+                                                        return flightRow;
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                            {isLoadingMore && <p className="loading-more">Carregando mais voos...</p>}
+                                            {!isLoadingMore && displayedFlights.length === 0 && <p className="loading-more">Nenhum voo encontrado com os filtros selecionados.</p>}
+                                        </div>
+                                    )}
+
+                                    {activeTab === 'mapa' && plan.locations && plan.locations.length > 1 && (
+                                        <div className="result-card route-map">
+                                            <h3>Visualização da Rota</h3>
+                                            <MapContainer 
+                                                bounds={plan.locations.map(loc => [loc.lat, loc.lng])} 
+                                                scrollWheelZoom={false} 
+                                                style={{ height: '400px', width: '100%', borderRadius: '8px' }}
+                                                key={plan.locations.map(l => l.city).join('-')}
+                                            >
+                                                <TileLayer
+                                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                                />
+                                                {plan.locations.map((loc, index) => (
+                                                    <Marker key={index} position={[loc.lat, loc.lng]}>
+                                                        <Popup>{loc.city}</Popup>
+                                                    </Marker>
+                                                ))}
+                                                <Polyline 
+                                                    positions={plan.locations.map(loc => [loc.lat, loc.lng])}
+                                                    color="#005a9e"
+                                                />
+                                                <ResizeMap bounds={plan.locations.map(loc => [loc.lat, loc.lng]) as [number, number][]} />
+                                            </MapContainer>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}

@@ -7,6 +7,7 @@
   --white-color: #ffffff;
   --border-color: #dce4e9;
   --shadow-color: rgba(0, 0, 0, 0.08);
+  --success-color: #28a745;
 }
 
 * {
@@ -49,8 +50,8 @@ header h1 {
 }
 
 main {
-  display: grid;
-  grid-template-columns: 40% 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 2rem;
   flex-grow: 1;
   width: 100%;
@@ -61,6 +62,9 @@ main {
   border-radius: 8px;
   box-shadow: 0 4px 6px var(--shadow-color);
   padding: 2rem;
+}
+
+.planner-form {
   height: fit-content;
 }
 
@@ -71,8 +75,19 @@ main {
   font-weight: 600;
 }
 
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.25rem;
+    align-items: end;
+}
+
 .form-group {
-  margin-bottom: 1.25rem;
+  margin-bottom: 0;
+}
+
+.form-group.full-width {
+    grid-column: 1 / -1;
 }
 
 .form-group label {
@@ -105,6 +120,8 @@ main {
 .radio-group {
   display: flex;
   gap: 1rem;
+  height: 48px; /* Align with input height */
+  align-items: center;
 }
 .radio-group label {
     display: flex;
@@ -127,7 +144,7 @@ main {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.5rem;
+  margin-top: 0.75rem;
 }
 
 .destination-tag {
@@ -154,6 +171,7 @@ main {
 .passengers-group, .date-range-group {
   display: flex;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 .passengers-group > div, .date-range-group > div {
   flex: 1;
@@ -163,6 +181,7 @@ main {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  height: 48px; /* Align with input height */
 }
 
 .btn {
@@ -178,6 +197,7 @@ main {
   cursor: pointer;
   text-align: center;
   transition: background-color 0.3s, transform 0.1s;
+  margin-top: 1.5rem;
 }
 
 .btn:hover:not(:disabled) {
@@ -192,6 +212,7 @@ main {
 .btn-sm {
     width: auto;
     padding: 0.5rem 1rem;
+    margin-top: 0;
 }
 
 .results-placeholder {
@@ -199,7 +220,7 @@ main {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  height: 100%;
+  min-height: 400px;
   text-align: center;
   color: #777;
 }
@@ -246,6 +267,11 @@ main {
     align-items: center;
 }
 
+.total-cost {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
 .download-btn, .save-btn {
     font-size: 0.9rem;
     padding: 0.4rem 0.8rem;
@@ -262,8 +288,8 @@ main {
 }
 
 .save-btn:disabled {
-    background-color: #28a745;
-    border-color: #28a745;
+    background-color: var(--success-color);
+    border-color: var(--success-color);
     color: var(--white-color);
     cursor: default;
 }
@@ -272,14 +298,43 @@ main {
 .checklist-item {
     margin-bottom: 0.75rem;
 }
+
 .checklist-item strong {
     display: block;
     font-weight: 600;
 }
+
 .checklist-item p {
     font-size: 0.95rem;
     color: #555;
     margin-left: 1rem;
+}
+
+.checklist-item.interactive {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.checklist-item.interactive input[type="checkbox"] {
+    margin-top: 0.25rem;
+    flex-shrink: 0;
+    width: 1.15rem;
+    height: 1.15rem;
+}
+
+.checklist-item.interactive label {
+    cursor: pointer;
+}
+
+.checklist-item.interactive p {
+    margin-left: 0;
+}
+
+.checklist-item.completed label strong,
+.checklist-item.completed label p {
+    text-decoration: line-through;
+    color: #888;
 }
 
 .filters-container {
@@ -316,6 +371,11 @@ main {
 .flights-table tbody tr:hover {
     background-color: #f1f5f8;
 }
+.flights-table tbody tr.selected {
+    background-color: #e0eef8;
+    box-shadow: inset 3px 0 0 0 var(--secondary-color);
+}
+
 .flights-table a {
   color: var(--secondary-color);
   text-decoration: none;
@@ -323,6 +383,26 @@ main {
 }
 .flights-table a:hover {
   text-decoration: underline;
+}
+
+.btn-select-flight {
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+    background-color: var(--white-color);
+    color: var(--secondary-color);
+    border: 1px solid var(--secondary-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.3s, color 0.3s;
+}
+.btn-select-flight:hover {
+    background-color: var(--secondary-color);
+    color: var(--white-color);
+}
+.selected .btn-select-flight {
+    background-color: var(--success-color);
+    border-color: var(--success-color);
+    color: var(--white-color);
 }
 
 .loading-more {
@@ -341,11 +421,315 @@ main {
     text-align: center;
 }
 
-@media (max-width: 1024px) {
-    main {
-        grid-template-columns: 1fr;
-    }
+.app-loading-placeholder {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  text-align: center;
+  color: #777;
 }
+.app-loading-placeholder .loading-spinner {
+  margin: 0;
+}
+.app-loading-placeholder p {
+  margin-top: 1rem;
+  font-size: 1.1rem;
+}
+
+.search-history {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.search-history h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.search-history-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem 0;
+}
+
+.search-history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.search-history-item:hover, .search-history-item:focus {
+    background-color: #f1f5f8;
+    border-color: var(--border-color);
+    outline: none;
+}
+
+.search-history-item span:first-child {
+    font-weight: 500;
+    color: var(--secondary-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 1rem;
+}
+
+.search-history-item span:last-child {
+    font-size: 0.85rem;
+    color: #777;
+    flex-shrink: 0;
+}
+
+.btn-clear-history {
+    display: block;
+    width: 100%;
+    padding: 0.6rem;
+    background: none;
+    border: 1px solid #d9534f;
+    color: #d9534f;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.3s, color 0.3s;
+    font-size: 0.9rem;
+}
+
+.btn-clear-history:hover {
+    background-color: #d9534f;
+    color: var(--white-color);
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.tab-item {
+  padding: 0.75rem 1.5rem;
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: 'Poppins', sans-serif;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-color);
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.3s, border-color 0.3s;
+}
+
+.tab-item:hover {
+  color: var(--primary-color);
+}
+
+.tab-item.active {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+  font-weight: 600;
+}
+
+.tab-content .result-card {
+    border: none;
+    box-shadow: none;
+    padding: 1.5rem 0 0 0;
+}
+
+.weather-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 1rem;
+}
+
+.weather-card {
+    background-color: #f8f9fa;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.weather-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 10px var(--shadow-color);
+}
+
+.weather-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.weather-card h4 {
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.weather-temp {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.weather-card p {
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.itinerary-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.pagination-btn {
+    background-color: var(--secondary-color);
+    color: var(--white-color);
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.3s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background-color: var(--primary-color);
+}
+
+.pagination-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+.itinerary-section {
+    margin-top: 1.5rem;
+}
+
+.itinerary-section h4 {
+    color: var(--secondary-color);
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 2px solid var(--accent-color);
+    display: inline-block;
+}
+
+.tips-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+}
+
+.tip-card {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 1rem;
+    border-left: 4px solid var(--accent-color);
+}
+
+.tip-card h4 {
+    border: none;
+    margin-bottom: 0.5rem;
+}
+
+.food-list {
+    list-style-type: none;
+    padding-left: 0;
+}
+
+.food-list li {
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.food-list li strong {
+    color: var(--primary-color);
+}
+
+.budget-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+}
+
+.budget-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem;
+    border-radius: 4px;
+    background-color: #f8f9fa;
+}
+
+.budget-item span:last-child {
+    font-weight: 600;
+}
+
+.budget-item.total {
+    background-color: var(--primary-color);
+    color: var(--white-color);
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+    padding: 1rem;
+}
+
+.budget-chart {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.chart-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.chart-label {
+    flex-basis: 120px;
+    flex-shrink: 0;
+    text-align: right;
+    font-size: 0.9rem;
+}
+
+.chart-bar-container {
+    flex-grow: 1;
+    background-color: #e9ecef;
+    border-radius: 4px;
+    height: 24px;
+}
+
+.chart-bar {
+    background-color: var(--accent-color);
+    height: 100%;
+    border-radius: 4px;
+    color: var(--white-color);
+    font-size: 0.8rem;
+    padding: 0 0.5rem;
+    line-height: 24px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-align: right;
+}
+
 
 @media (max-width: 768px) {
     .container {
@@ -357,9 +741,45 @@ main {
     .planner-form, .results-display {
         padding: 1.5rem;
     }
-    .passengers-group, .date-range-group, .filters-container {
+    .filters-container {
         flex-direction: column;
-        gap: 1.25rem;
         align-items: stretch;
+    }
+    .tab-item {
+      padding: 0.75rem 0.5rem;
+      font-size: 0.85rem;
+    }
+}
+
+@media (min-width: 992px) {
+    main {
+        display: grid;
+        grid-template-columns: 450px 1fr;
+        align-items: start;
+    }
+
+    .planner-form {
+        position: sticky;
+        top: 2rem;
+        height: calc(100vh - 4rem);
+        overflow-y: auto;
+    }
+
+    .planner-form::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .planner-form::-webkit-scrollbar-track {
+        background: var(--background-color);
+        border-radius: 4px;
+    }
+
+    .planner-form::-webkit-scrollbar-thumb {
+        background-color: var(--border-color);
+        border-radius: 4px;
+    }
+
+    .planner-form::-webkit-scrollbar-thumb:hover {
+        background-color: #b0c0cb;
     }
 }

@@ -14,16 +14,25 @@
 {
   "imports": {
     "react": "https://aistudiocdn.com/react@^18.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^18.2.0/",
+    "react-dom": "https://aistudiocdn.com/react-dom@^18.2.0",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@^18.2.0/client",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.16.0",
     "react/": "https://aistudiocdn.com/react@^18.2.0/",
-    "react-leaflet": "https://aistudiocdn.com/react-leaflet@^5.0.0"
+    "@react-leaflet/core": "https://aistudiocdn.com/@react-leaflet/core@^2.1.0",
+    "react-leaflet": "https://aistudiocdn.com/react-leaflet@^4.2.1",
+    "leaflet": "https://aistudiocdn.com/leaflet@^1.9.4",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^18.2.0/"
   }
 }
 </script>
 </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="app-loading-placeholder">
+        <div class="loading-spinner"></div>
+        <p>Carregando planejador de viagens...</p>
+      </div>
+    </div>
     <script type="module" src="index.tsx"></script>
   </body>
 </html>
