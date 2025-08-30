@@ -438,6 +438,43 @@ main {
   font-size: 1.1rem;
 }
 
+.api-key-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-grow: 1;
+  padding: 2rem;
+}
+
+.api-key-form {
+  max-width: 500px;
+  width: 100%;
+  background-color: var(--white-color);
+  padding: 2.5rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px var(--shadow-color);
+  text-align: center;
+}
+
+.api-key-form h2 {
+  color: var(--primary-color);
+  margin-bottom: 1rem;
+}
+
+.api-key-form p {
+  margin-bottom: 1.5rem;
+  color: #555;
+}
+
+.api-key-form .form-group {
+  text-align: left;
+  margin-bottom: 1.5rem;
+}
+
+.api-key-form .btn {
+  margin-top: 0;
+}
+
 .search-history {
     margin-top: 2rem;
     padding-top: 1.5rem;

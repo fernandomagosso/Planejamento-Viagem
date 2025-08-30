@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type } from "@google/genai";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 
+// --- Interfaces ---
 interface Flight {
     airline: string;
     stops: number;
@@ -95,6 +96,9 @@ interface HistoryItem {
   details: TripDetails;
 }
 
+
+// --- Helper Components & Functions ---
+
 const ResizeMap = ({ bounds }: { bounds: [number, number][] }) => {
     const map = useMap();
     useEffect(() => {
@@ -116,7 +120,9 @@ const getWeatherIcon = (summary: string) => {
     return '🌍'; // Default icon
 };
 
-const App = () => {
+// --- Main Application Components ---
+
+const App = ({ apiKey }: { apiKey: string }) => {
     const [tripDetails, setTripDetails] = useState<TripDetails>({
         prediction: new Date().getFullYear() + 1,
         type: 'Internacional',
@@ -140,15 +146,12 @@ const App = () => {
     const [currentItineraryPage, setCurrentItineraryPage] = useState(0);
     const [selectedFlight, setSelectedFlight] = useState<Flight | null>(null);
 
-
-    // Filter state
     const [filters, setFilters] = useState({
         airline: 'all',
         stops: 'all',
         maxPrice: ''
     });
 
-    // Infinite scroll state
     const [displayedFlights, setDisplayedFlights] = useState<Flight[]>([]);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const observer = useRef<IntersectionObserver | null>(null);
@@ -211,7 +214,7 @@ const App = () => {
         }
     }, [filteredFlights]);
 
-    const lastFlightElementRef = useCallback(node => {
+    const lastFlightElementRef = useCallback((node: any) => {
         if (isLoadingMore) return;
         if (observer.current) observer.current.disconnect();
         
@@ -219,7 +222,7 @@ const App = () => {
             const hasMore = displayedFlights.length < filteredFlights.length;
             if (entries[0].isIntersecting && hasMore) {
                 setIsLoadingMore(true);
-                setTimeout(() => { // Simulate network request for smoother UX
+                setTimeout(() => { 
                     const currentLength = displayedFlights.length;
                     const newFlights = filteredFlights.slice(currentLength, currentLength + FLIGHTS_PER_PAGE);
                     setDisplayedFlights(prev => [...prev, ...newFlights]);
@@ -288,7 +291,7 @@ const App = () => {
             return item;
         });
         setPlan(prevPlan => ({ ...prevPlan!, checklist: newChecklist }));
-        setIsSaved(false); // Indicate there are unsaved changes
+        setIsSaved(false); 
     };
 
     const handlePackingListToggle = (categoryIndex: number, itemIndex: number) => {
@@ -305,7 +308,7 @@ const App = () => {
 
     const handleSelectFlight = (flight: Flight) => {
         if (selectedFlight && JSON.stringify(selectedFlight) === JSON.stringify(flight)) {
-            setSelectedFlight(null); // Deselect if the same flight is clicked again
+            setSelectedFlight(null); 
         } else {
             setSelectedFlight(flight);
         }
@@ -313,7 +316,6 @@ const App = () => {
     };
 
     const generateDestinationImages = async (ai: GoogleGenAI, destinations: ItineraryDestination[]) => {
-        // Set loading state for all images
         setPlan(prevPlan => {
             if (!prevPlan) return null;
             const updatedItinerary = prevPlan.itinerary.map(dest => ({ ...dest, imageUrl: 'loading' }));
@@ -331,7 +333,7 @@ const App = () => {
                  },
             }).catch(e => {
                 console.error(`Failed to generate image for ${dest.destination_name}`, e);
-                return null; // Return null on failure
+                return null;
             })
         );
     
@@ -347,11 +349,10 @@ const App = () => {
                     return { ...prevPlan, itinerary: updatedItinerary };
                 });
             } else {
-                // Handle failure
                 setPlan(prevPlan => {
                     if (!prevPlan) return null;
                     const updatedItinerary = [...prevPlan.itinerary];
-                    updatedItinerary[index].imageUrl = null; // Set to null on error
+                    updatedItinerary[index].imageUrl = null;
                     return { ...prevPlan, itinerary: updatedItinerary };
                 });
             }
@@ -359,12 +360,6 @@ const App = () => {
     };
 
     const generatePlan = async () => {
-        const apiKey = sessionStorage.getItem('gemini_api_key');
-        if (!apiKey) {
-            setError('A chave de API não foi encontrada. Por favor, recarregue a página e insira sua chave.');
-            return;
-        }
-
         setLoading(true);
         setError('');
         setPlan(null);
@@ -382,7 +377,7 @@ const App = () => {
         }
 
         try {
-            const ai = new GoogleGenAI({ apiKey: apiKey });
+            const ai = new GoogleGenAI({ apiKey });
             
             const schema = {
                 type: Type.OBJECT,
@@ -560,7 +555,6 @@ Retorne um objeto JSON seguindo o schema fornecido. Todos os custos devem ser n�
                 setActiveTab('roteiro');
                 setCurrentItineraryPage(0);
                 
-                // Generate images after setting the plan
                 generateDestinationImages(ai, planWithChecklistState.itinerary);
 
                 const newHistoryItem: HistoryItem = {
@@ -645,484 +639,514 @@ Retorne um objeto JSON seguindo o schema fornecido. Todos os custos devem ser n�
     }, [plan?.costs, selectedFlight]);
 
     return (
-        <>
-            <header>
-                <h1>Planejador de Viagens do Ernest</h1>
-            </header>
-            <div className="container">
-                <main>
-                    <section className="planner-form">
-                        <h2>Crie o Roteiro da Sua Próxima Aventura</h2>
-                        <div className="form-grid">
-                            <div className="form-group">
-                                <label htmlFor="prediction">Previsão da Viagem</label>
-                                <input type="text" id="prediction" name="prediction" value={tripDetails.prediction} onChange={handleInputChange} placeholder="Ex: 2026" />
-                            </div>
-                            <div className="form-group">
-                                <label>Opção da Viagem</label>
-                                <div className="radio-group">
-                                    <label><input type="radio" name="type" value="Nacional" checked={tripDetails.type === 'Nacional'} onChange={handleInputChange} /> Nacional</label>
-                                    <label><input type="radio" name="type" value="Internacional" checked={tripDetails.type === 'Internacional'} onChange={handleInputChange} /> Internacional</label>
-                                </div>
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="origin">Origem</label>
-                                <input type="text" id="origin" name="origin" value={tripDetails.origin} onChange={handleInputChange} />
-                            </div>
-                             <div className="form-group full-width">
-                                <label htmlFor="destination">Destinos</label>
-                                <div className="destinations-group">
-                                    <input type="text" id="destination" value={currentDestination} onChange={(e) => setCurrentDestination(e.target.value)} placeholder="Adicione um destino"/>
-                                    <button className="btn btn-sm" onClick={handleAddDestination} type="button">Adicionar</button>
-                                </div>
-                                <ul className="destinations-list">
-                                    {tripDetails.destinations.map(dest => (
-                                        <li key={dest} className="destination-tag">
-                                            {dest} <button onClick={() => handleRemoveDestination(dest)}>&times;</button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                             <div className="form-group passengers-group">
-                                <div>
-                                    <label htmlFor="adults">Adultos</label>
-                                    <input type="number" id="adults" name="adults" min="1" value={tripDetails.adults} onChange={handleInputChange} />
-                                </div>
-                                <div>
-                                    <label htmlFor="children">Crianças</label>
-                                    <input type="number" id="children" name="children" min="0" value={tripDetails.children} onChange={handleInputChange} />
-                                </div>
-                            </div>
-                            <div className="form-group date-range-group">
-                                <div>
-                                    <label htmlFor="startDate">Data de Início</label>
-                                    <input type="date" id="startDate" name="startDate" value={tripDetails.startDate} onChange={handleInputChange} />
-                                </div>
-                                <div>
-                                    <label htmlFor="endDate">Data de Fim</label>
-                                    <input type="date" id="endDate" name="endDate" value={tripDetails.endDate} onChange={handleInputChange} />
-                                </div>
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="tripType">Tipo de Viagem</label>
-                                <select id="tripType" name="tripType" value={tripDetails.tripType} onChange={handleInputChange}>
-                                    <option>Aventura</option>
-                                    <option>Relaxante</option>
-                                    <option>Cultural</option>
-                                    <option>Gastronômica</option>
-                                </select>
-                            </div>
-                            <div className="form-group">
-                                <label htmlFor="class">Classe das Passagens</label>
-                                <select id="class" name="class" value={tripDetails.class} onChange={handleInputChange}>
-                                    <option>Econômica</option>
-                                    <option>Executiva</option>
-                                    <option>Primeira Classe</option>
-                                </select>
-                            </div>
-                            <div className="form-group checkbox-group">
-                                <input type="checkbox" id="stopover" name="stopover" checked={tripDetails.stopover} onChange={handleInputChange} />
-                                <label htmlFor="stopover">Incluir busca por Stopover</label>
+        <div className="container">
+            <main>
+                <section className="planner-form">
+                    <h2>Crie o Roteiro da Sua Próxima Aventura</h2>
+                    <div className="form-grid">
+                        <div className="form-group">
+                            <label htmlFor="prediction">Previsão da Viagem</label>
+                            <input type="text" id="prediction" name="prediction" value={tripDetails.prediction} onChange={handleInputChange} placeholder="Ex: 2026" />
+                        </div>
+                        <div className="form-group">
+                            <label>Opção da Viagem</label>
+                            <div className="radio-group">
+                                <label><input type="radio" name="type" value="Nacional" checked={tripDetails.type === 'Nacional'} onChange={handleInputChange} /> Nacional</label>
+                                <label><input type="radio" name="type" value="Internacional" checked={tripDetails.type === 'Internacional'} onChange={handleInputChange} /> Internacional</label>
                             </div>
                         </div>
-                        <button className="btn" onClick={generatePlan} disabled={loading}>
-                            {loading ? 'Planejando...' : 'Planejar Viagem'}
-                        </button>
-
-                        {searchHistory.length > 0 && (
-                            <div className="search-history">
-                                <h3>Histórico de Pesquisas</h3>
-                                <ul className="search-history-list">
-                                    {searchHistory.map((item) => (
-                                        <li 
-                                            key={item.id} 
-                                            className="search-history-item" 
-                                            onClick={() => handleLoadHistoryItem(item.details)} 
-                                            title="Recarregar esta pesquisa"
-                                            tabIndex={0}
-                                            onKeyDown={(e) => { if (e.key === 'Enter') handleLoadHistoryItem(item.details) }}
-                                        >
-                                            <span>{item.title}</span>
-                                            <span>{item.details.destinations.length} destino(s)</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                                <button className="btn-clear-history" onClick={handleClearHistory}>
-                                    Limpar Histórico
-                                </button>
+                        <div className="form-group">
+                            <label htmlFor="origin">Origem</label>
+                            <input type="text" id="origin" name="origin" value={tripDetails.origin} onChange={handleInputChange} />
+                        </div>
+                         <div className="form-group full-width">
+                            <label htmlFor="destination">Destinos</label>
+                            <div className="destinations-group">
+                                <input type="text" id="destination" value={currentDestination} onChange={(e) => setCurrentDestination(e.target.value)} placeholder="Adicione um destino"/>
+                                <button className="btn btn-sm" onClick={handleAddDestination} type="button">Adicionar</button>
                             </div>
-                        )}
-                    </section>
-                    <section className="results-display">
-                        {loading && <div className="loading-spinner"></div>}
-                        {error && <p className="error-message">{error}</p>}
-                        {!loading && !plan && !error && (
-                             <div className="results-placeholder">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.25-6.362m-16.5 0A9.004 9.004 0 0112 3c1.356 0 2.64.31 3.805.872m-7.61 14.128A9.004 9.004 0 0112 21c-1.356 0-2.64-.31-3.805-.872m7.61-14.128L12 12.75m-4.5-4.5L12 12.75m0 0l4.5 4.5m-4.5-4.5L7.5 17.25" />
-                                </svg>
-                                <h3>Seu guia de viagem personalizado aparecerá aqui.</h3>
-                                <p>Preencha os detalhes ao lado para começar a planejar sua próxima aventura!</p>
+                            <ul className="destinations-list">
+                                {tripDetails.destinations.map(dest => (
+                                    <li key={dest} className="destination-tag">
+                                        {dest} <button onClick={() => handleRemoveDestination(dest)}>&times;</button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                         <div className="form-group passengers-group">
+                            <div>
+                                <label htmlFor="adults">Adultos</label>
+                                <input type="number" id="adults" name="adults" min="1" value={tripDetails.adults} onChange={handleInputChange} />
                             </div>
-                        )}
-                        {plan && (
-                            <div className="results-content">
-                                <div className="result-card">
-                                    <h3>
-                                        Resumo da Viagem
-                                        <button className="save-btn" onClick={handleSavePlan} disabled={isSaved}>
-                                            {isSaved ? 'Plano Salvo!' : 'Salvar Plano'}
-                                        </button>
-                                    </h3>
-                                    <p><strong>Rota:</strong> {tripDetails.origin} → {tripDetails.destinations.join(' → ')} → {tripDetails.origin}</p>
-                                    <p><strong>Custo Total Estimado (com voo):</strong> <span className="total-cost">{formatCurrency(totalCostWithFlight)}</span></p>
-                                </div>
+                            <div>
+                                <label htmlFor="children">Crianças</label>
+                                <input type="number" id="children" name="children" min="0" value={tripDetails.children} onChange={handleInputChange} />
+                            </div>
+                        </div>
+                        <div className="form-group date-range-group">
+                            <div>
+                                <label htmlFor="startDate">Data de Início</label>
+                                <input type="date" id="startDate" name="startDate" value={tripDetails.startDate} onChange={handleInputChange} />
+                            </div>
+                            <div>
+                                <label htmlFor="endDate">Data de Fim</label>
+                                <input type="date" id="endDate" name="endDate" value={tripDetails.endDate} onChange={handleInputChange} />
+                            </div>
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="tripType">Tipo de Viagem</label>
+                            <select id="tripType" name="tripType" value={tripDetails.tripType} onChange={handleInputChange}>
+                                <option>Aventura</option>
+                                <option>Relaxante</option>
+                                <option>Cultural</option>
+                                <option>Gastronômica</option>
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="class">Classe das Passagens</label>
+                            <select id="class" name="class" value={tripDetails.class} onChange={handleInputChange}>
+                                <option>Econômica</option>
+                                <option>Executiva</option>
+                                <option>Primeira Classe</option>
+                            </select>
+                        </div>
+                        <div className="form-group checkbox-group">
+                            <input type="checkbox" id="stopover" name="stopover" checked={tripDetails.stopover} onChange={handleInputChange} />
+                            <label htmlFor="stopover">Incluir busca por Stopover</label>
+                        </div>
+                    </div>
+                    <button className="btn" onClick={generatePlan} disabled={loading}>
+                        {loading ? 'Planejando...' : 'Planejar Viagem'}
+                    </button>
 
-                                <div className="tabs">
-                                    <button className={`tab-item ${activeTab === 'roteiro' ? 'active' : ''}`} onClick={() => setActiveTab('roteiro')}>Roteiro</button>
-                                    <button className={`tab-item ${activeTab === 'bagagem' ? 'active' : ''}`} onClick={() => setActiveTab('bagagem')}>O que levar</button>
-                                    <button className={`tab-item ${activeTab === 'orcamento' ? 'active' : ''}`} onClick={() => setActiveTab('orcamento')}>Orçamento</button>
-                                    <button className={`tab-item ${activeTab === 'checklist' ? 'active' : ''}`} onClick={() => setActiveTab('checklist')}>Checklist</button>
-                                    <button className={`tab-item ${activeTab === 'clima' ? 'active' : ''}`} onClick={() => setActiveTab('clima')}>Previsão do Tempo</button>
-                                    <button className={`tab-item ${activeTab === 'voos' ? 'active' : ''}`} onClick={() => setActiveTab('voos')}>Opções de Voo</button>
-                                    <button className={`tab-item ${activeTab === 'mapa' ? 'active' : ''}`} onClick={() => setActiveTab('mapa')}>Mapa da Rota</button>
-                                </div>
-                                
-                                <div className="tab-content">
-                                    {activeTab === 'roteiro' && plan.itinerary && plan.itinerary.length > 0 && (
-                                        <div className="result-card">
-                                            {(() => {
-                                                const currentItinerary = plan.itinerary[currentItineraryPage];
-                                                if (!currentItinerary) return <p>Roteiro indisponível.</p>;
-                                                return (
-                                                    <>
-                                                        <h3>Roteiro para: {currentItinerary.destination_name}</h3>
-                                                         <div className="destination-image-container">
-                                                            {currentItinerary.imageUrl === 'loading' && (
-                                                                <div className="image-loading-placeholder">
-                                                                    <div className="loading-spinner"></div>
-                                                                    <p>Gerando imagem...</p>
-                                                                </div>
-                                                            )}
-                                                            {currentItinerary.imageUrl && currentItinerary.imageUrl.startsWith('data:') && (
-                                                                <img src={currentItinerary.imageUrl} alt={`Imagem de ${currentItinerary.destination_name}`} className="destination-image" />
-                                                            )}
-                                                        </div>
-                                                        <p>{currentItinerary.destination_summary}</p>
-                                                        
-                                                        <div className="itinerary-section">
-                                                            <h4>Plano Diário</h4>
-                                                            {currentItinerary.daily_plan.map(item => (
-                                                                <div key={`${item.day}-${item.activity}`} className="checklist-item">
-                                                                    <strong>Dia {item.day}</strong>
-                                                                    <p>{item.activity}</p>
-                                                                </div>
-                                                            ))}
-                                                        </div>
+                    {searchHistory.length > 0 && (
+                        <div className="search-history">
+                            <h3>Histórico de Pesquisas</h3>
+                            <ul className="search-history-list">
+                                {searchHistory.map((item) => (
+                                    <li 
+                                        key={item.id} 
+                                        className="search-history-item" 
+                                        onClick={() => handleLoadHistoryItem(item.details)} 
+                                        title="Recarregar esta pesquisa"
+                                        tabIndex={0}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') handleLoadHistoryItem(item.details) }}
+                                    >
+                                        <span>{item.title}</span>
+                                        <span>{item.details.destinations.length} destino(s)</span>
+                                    </li>
+                                ))}
+                            </ul>
+                            <button className="btn-clear-history" onClick={handleClearHistory}>
+                                Limpar Histórico
+                            </button>
+                        </div>
+                    )}
+                </section>
+                <section className="results-display">
+                    {loading && <div className="loading-spinner"></div>}
+                    {error && <p className="error-message">{error}</p>}
+                    {!loading && !plan && !error && (
+                         <div className="results-placeholder">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.25-6.362m-16.5 0A9.004 9.004 0 0112 3c1.356 0 2.64.31 3.805.872m-7.61 14.128A9.004 9.004 0 0112 21c-1.356 0-2.64-.31-3.805-.872m7.61-14.128L12 12.75m-4.5-4.5L12 12.75m0 0l4.5 4.5m-4.5-4.5L7.5 17.25" />
+                            </svg>
+                            <h3>Seu guia de viagem personalizado aparecerá aqui.</h3>
+                            <p>Preencha os detalhes ao lado para começar a planejar sua próxima aventura!</p>
+                        </div>
+                    )}
+                    {plan && (
+                        <div className="results-content">
+                            <div className="result-card">
+                                <h3>
+                                    Resumo da Viagem
+                                    <button className="save-btn" onClick={handleSavePlan} disabled={isSaved}>
+                                        {isSaved ? 'Plano Salvo!' : 'Salvar Plano'}
+                                    </button>
+                                </h3>
+                                <p><strong>Rota:</strong> {tripDetails.origin} → {tripDetails.destinations.join(' → ')} → {tripDetails.origin}</p>
+                                <p><strong>Custo Total Estimado (com voo):</strong> <span className="total-cost">{formatCurrency(totalCostWithFlight)}</span></p>
+                            </div>
 
-                                                        <div className="itinerary-section tips-grid">
-                                                           <div className="tip-card">
-                                                                <h4>✈️ Transporte</h4>
-                                                                <p>{currentItinerary.transport_tips}</p>
-                                                           </div>
-                                                           <div className="tip-card">
-                                                                <h4>🛡️ Segurança</h4>
-                                                                <p>{currentItinerary.safety_tips}</p>
-                                                           </div>
-                                                        </div>
+                            <div className="tabs">
+                                <button className={`tab-item ${activeTab === 'roteiro' ? 'active' : ''}`} onClick={() => setActiveTab('roteiro')}>Roteiro</button>
+                                <button className={`tab-item ${activeTab === 'bagagem' ? 'active' : ''}`} onClick={() => setActiveTab('bagagem')}>O que levar</button>
+                                <button className={`tab-item ${activeTab === 'orcamento' ? 'active' : ''}`} onClick={() => setActiveTab('orcamento')}>Orçamento</button>
+                                <button className={`tab-item ${activeTab === 'checklist' ? 'active' : ''}`} onClick={() => setActiveTab('checklist')}>Checklist</button>
+                                <button className={`tab-item ${activeTab === 'clima' ? 'active' : ''}`} onClick={() => setActiveTab('clima')}>Previsão do Tempo</button>
+                                <button className={`tab-item ${activeTab === 'voos' ? 'active' : ''}`} onClick={() => setActiveTab('voos')}>Opções de Voo</button>
+                                <button className={`tab-item ${activeTab === 'mapa' ? 'active' : ''}`} onClick={() => setActiveTab('mapa')}>Mapa da Rota</button>
+                            </div>
+                            
+                            <div className="tab-content">
+                                {activeTab === 'roteiro' && plan.itinerary && plan.itinerary.length > 0 && (
+                                    <div className="result-card">
+                                        {(() => {
+                                            const currentItinerary = plan.itinerary[currentItineraryPage];
+                                            if (!currentItinerary) return <p>Roteiro indisponível.</p>;
+                                            return (
+                                                <>
+                                                    <h3>Roteiro para: {currentItinerary.destination_name}</h3>
+                                                     <div className="destination-image-container">
+                                                        {currentItinerary.imageUrl === 'loading' && (
+                                                            <div className="image-loading-placeholder">
+                                                                <div className="loading-spinner"></div>
+                                                                <p>Gerando imagem...</p>
+                                                            </div>
+                                                        )}
+                                                        {currentItinerary.imageUrl && currentItinerary.imageUrl.startsWith('data:') && (
+                                                            <img src={currentItinerary.imageUrl} alt={`Imagem de ${currentItinerary.destination_name}`} className="destination-image" />
+                                                        )}
+                                                    </div>
+                                                    <p>{currentItinerary.destination_summary}</p>
+                                                    
+                                                    <div className="itinerary-section">
+                                                        <h4>Plano Diário</h4>
+                                                        {currentItinerary.daily_plan.map(item => (
+                                                            <div key={`${item.day}-${item.activity}`} className="checklist-item">
+                                                                <strong>Dia {item.day}</strong>
+                                                                <p>{item.activity}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
 
-                                                        <div className="itinerary-section">
-                                                            <h4>Culinária Local 🍽️</h4>
-                                                             <ul className="food-list">
-                                                                {currentItinerary.food_recommendations.map(food => (
-                                                                    <li key={food.name}>
-                                                                        <strong>{food.name}:</strong> {food.description}
-                                                                    </li>
-                                                                ))}
-                                                            </ul>
-                                                        </div>
-                                                    </>
-                                                );
-                                            })()}
-                                            
-                                            <div className="itinerary-pagination">
-                                                <button 
-                                                    onClick={() => setCurrentItineraryPage(p => p - 1)} 
-                                                    disabled={currentItineraryPage === 0}
-                                                    className="pagination-btn"
-                                                >
-                                                    &larr; Anterior
-                                                </button>
-                                                <span>{currentItineraryPage + 1} de {plan.itinerary.length}</span>
-                                                <button 
-                                                    onClick={() => setCurrentItineraryPage(p => p + 1)} 
-                                                    disabled={currentItineraryPage === plan.itinerary.length - 1}
-                                                    className="pagination-btn"
-                                                >
-                                                    Próximo &rarr;
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
+                                                    <div className="itinerary-section tips-grid">
+                                                       <div className="tip-card">
+                                                            <h4>✈️ Transporte</h4>
+                                                            <p>{currentItinerary.transport_tips}</p>
+                                                       </div>
+                                                       <div className="tip-card">
+                                                            <h4>🛡️ Segurança</h4>
+                                                            <p>{currentItinerary.safety_tips}</p>
+                                                       </div>
+                                                    </div>
 
-                                    {activeTab === 'bagagem' && (
-                                        <div className="result-card">
-                                            <h3>O que levar na sua viagem</h3>
-                                            <div className="packing-list-container">
-                                                {plan.packing_list?.map((category, catIndex) => (
-                                                    <div key={category.category} className="packing-category">
-                                                        <h4>{category.category}</h4>
-                                                        <ul className="packing-items-list">
-                                                            {category.items.map((item, itemIndex) => (
-                                                                <li key={item.item} className={`packing-item ${item.packed ? 'packed' : ''}`}>
-                                                                     <input 
-                                                                        type="checkbox" 
-                                                                        id={`pack-${catIndex}-${itemIndex}`} 
-                                                                        checked={item.packed} 
-                                                                        onChange={() => handlePackingListToggle(catIndex, itemIndex)} 
-                                                                    />
-                                                                    <label htmlFor={`pack-${catIndex}-${itemIndex}`}>
-                                                                        {item.item} {item.quantity > 1 ? `(x${item.quantity})` : ''}
-                                                                    </label>
+                                                    <div className="itinerary-section">
+                                                        <h4>Culinária Local 🍽️</h4>
+                                                         <ul className="food-list">
+                                                            {currentItinerary.food_recommendations.map(food => (
+                                                                <li key={food.name}>
+                                                                    <strong>{food.name}:</strong> {food.description}
                                                                 </li>
                                                             ))}
                                                         </ul>
                                                     </div>
-                                                ))}
-                                            </div>
+                                                </>
+                                            );
+                                        })()}
+                                        
+                                        <div className="itinerary-pagination">
+                                            <button 
+                                                onClick={() => setCurrentItineraryPage(p => p - 1)} 
+                                                disabled={currentItineraryPage === 0}
+                                                className="pagination-btn"
+                                            >
+                                                &larr; Anterior
+                                            </button>
+                                            <span>{currentItineraryPage + 1} de {plan.itinerary.length}</span>
+                                            <button 
+                                                onClick={() => setCurrentItineraryPage(p => p + 1)} 
+                                                disabled={currentItineraryPage === plan.itinerary.length - 1}
+                                                className="pagination-btn"
+                                            >
+                                                Próximo &rarr;
+                                            </button>
                                         </div>
-                                    )}
+                                    </div>
+                                )}
 
-                                    {activeTab === 'orcamento' && (
-                                        <div className="result-card">
-                                            <h3>Detalhamento do Orçamento</h3>
-                                            <div className="budget-summary">
-                                                <div className="budget-item"><span>Hospedagem</span> <span>{formatCurrency(plan.costs.accommodation)}</span></div>
-                                                <div className="budget-item"><span>Alimentação</span> <span>{formatCurrency(plan.costs.food)}</span></div>
-                                                <div className="budget-item"><span>Atividades</span> <span>{formatCurrency(plan.costs.activities)}</span></div>
-                                                <div className="budget-item"><span>Transporte Local</span> <span>{formatCurrency(plan.costs.transport)}</span></div>
-                                                <div className="budget-item"><span>Voo Selecionado</span> <span>{formatCurrency(selectedFlight?.price)}</span></div>
-                                                <div className="budget-item total"><span>Custo Total Estimado</span> <span>{formatCurrency(totalCostWithFlight)}</span></div>
-                                            </div>
-                                            <h4>Distribuição de Custos</h4>
-                                            <div className="budget-chart">
-                                                {Object.entries({
-                                                    'Hospedagem': plan.costs.accommodation,
-                                                    'Alimentação': plan.costs.food,
-                                                    'Atividades': plan.costs.activities,
-                                                    'Transporte': plan.costs.transport,
-                                                    'Voo': selectedFlight?.price || 0,
-                                                }).map(([key, value]) => {
-                                                    if (value <= 0) return null;
-                                                    const percentage = totalCostWithFlight > 0 ? (value / totalCostWithFlight) * 100 : 0;
-                                                    return (
-                                                        <div key={key} className="chart-item">
-                                                            <div className="chart-label">{key}</div>
-                                                            <div className="chart-bar-container">
-                                                                <div className="chart-bar" style={{ width: `${percentage}%` }}>
-                                                                    {formatCurrency(value)}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {activeTab === 'checklist' && (
-                                        <div className="result-card">
-                                            <h3>
-                                                Checklist de Planejamento
-                                                <button className="download-btn" onClick={handleDownloadChecklist}>Baixar Checklist</button>
-                                            </h3>
-                                            {plan.checklist.map((item, index) => (
-                                                <div key={item.task} className={`checklist-item interactive ${item.completed ? 'completed' : ''}`}>
-                                                    <input 
-                                                        type="checkbox" 
-                                                        id={`task-${index}`} 
-                                                        checked={item.completed} 
-                                                        onChange={() => handleChecklistToggle(index)} 
-                                                    />
-                                                    <label htmlFor={`task-${index}`}>
-                                                        <strong>{item.task}</strong>
-                                                        <p>{item.details}</p>
-                                                    </label>
+                                {activeTab === 'bagagem' && (
+                                    <div className="result-card">
+                                        <h3>O que levar na sua viagem</h3>
+                                        <div className="packing-list-container">
+                                            {plan.packing_list?.map((category, catIndex) => (
+                                                <div key={category.category} className="packing-category">
+                                                    <h4>{category.category}</h4>
+                                                    <ul className="packing-items-list">
+                                                        {category.items.map((item, itemIndex) => (
+                                                            <li key={item.item} className={`packing-item ${item.packed ? 'packed' : ''}`}>
+                                                                 <input 
+                                                                    type="checkbox" 
+                                                                    id={`pack-${catIndex}-${itemIndex}`} 
+                                                                    checked={item.packed} 
+                                                                    onChange={() => handlePackingListToggle(catIndex, itemIndex)} 
+                                                                />
+                                                                <label htmlFor={`pack-${catIndex}-${itemIndex}`}>
+                                                                    {item.item} {item.quantity > 1 ? `(x${item.quantity})` : ''}
+                                                                </label>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
                                                 </div>
                                             ))}
                                         </div>
-                                    )}
-                                    
-                                    {activeTab === 'clima' && (
-                                        <div className="result-card">
-                                            <h3>Previsão do Tempo para os Destinos</h3>
-                                            <div className="weather-grid">
-                                                {plan.weather?.map((w, index) => (
-                                                    <div key={index} className="weather-card">
-                                                        <div className="weather-icon">{getWeatherIcon(w.forecast_summary)}</div>
-                                                        <h4>{w.destination}</h4>
-                                                        <p className="weather-temp">{Math.round(w.avg_temp_celsius)}°C</p>
-                                                        <p>{w.forecast_summary}</p>
+                                    </div>
+                                )}
+
+                                {activeTab === 'orcamento' && (
+                                    <div className="result-card">
+                                        <h3>Detalhamento do Orçamento</h3>
+                                        <div className="budget-summary">
+                                            <div className="budget-item"><span>Hospedagem</span> <span>{formatCurrency(plan.costs.accommodation)}</span></div>
+                                            <div className="budget-item"><span>Alimentação</span> <span>{formatCurrency(plan.costs.food)}</span></div>
+                                            <div className="budget-item"><span>Atividades</span> <span>{formatCurrency(plan.costs.activities)}</span></div>
+                                            <div className="budget-item"><span>Transporte Local</span> <span>{formatCurrency(plan.costs.transport)}</span></div>
+                                            <div className="budget-item"><span>Voo Selecionado</span> <span>{formatCurrency(selectedFlight?.price)}</span></div>
+                                            <div className="budget-item total"><span>Custo Total Estimado</span> <span>{formatCurrency(totalCostWithFlight)}</span></div>
+                                        </div>
+                                        <h4>Distribuição de Custos</h4>
+                                        <div className="budget-chart">
+                                            {Object.entries({
+                                                'Hospedagem': plan.costs.accommodation,
+                                                'Alimentação': plan.costs.food,
+                                                'Atividades': plan.costs.activities,
+                                                'Transporte': plan.costs.transport,
+                                                'Voo': selectedFlight?.price || 0,
+                                            }).map(([key, value]) => {
+                                                if (value <= 0) return null;
+                                                const percentage = totalCostWithFlight > 0 ? (value / totalCostWithFlight) * 100 : 0;
+                                                return (
+                                                    <div key={key} className="chart-item">
+                                                        <div className="chart-label">{key}</div>
+                                                        <div className="chart-bar-container">
+                                                            <div className="chart-bar" style={{ width: `${percentage}%` }}>
+                                                                {formatCurrency(value)}
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                ))}
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'checklist' && (
+                                    <div className="result-card">
+                                        <h3>
+                                            Checklist de Planejamento
+                                            <button className="download-btn" onClick={handleDownloadChecklist}>Baixar Checklist</button>
+                                        </h3>
+                                        {plan.checklist.map((item, index) => (
+                                            <div key={item.task} className={`checklist-item interactive ${item.completed ? 'completed' : ''}`}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    id={`task-${index}`} 
+                                                    checked={item.completed} 
+                                                    onChange={() => handleChecklistToggle(index)} 
+                                                />
+                                                <label htmlFor={`task-${index}`}>
+                                                    <strong>{item.task}</strong>
+                                                    <p>{item.details}</p>
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                
+                                {activeTab === 'clima' && (
+                                    <div className="result-card">
+                                        <h3>Previsão do Tempo para os Destinos</h3>
+                                        <div className="weather-grid">
+                                            {plan.weather?.map((w, index) => (
+                                                <div key={index} className="weather-card">
+                                                    <div className="weather-icon">{getWeatherIcon(w.forecast_summary)}</div>
+                                                    <h4>{w.destination}</h4>
+                                                    <p className="weather-temp">{Math.round(w.avg_temp_celsius)}°C</p>
+                                                    <p>{w.forecast_summary}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'voos' && (
+                                    <div className="result-card">
+                                        <h3>
+                                            Opções de Voo Encontradas
+                                            <button className="download-btn" onClick={handleDownloadFlights}>Baixar CSV</button>
+                                        </h3>
+                                        <div className="filters-container">
+                                            <div className="filter-group">
+                                                <label htmlFor="airline">Companhia Aérea</label>
+                                                <select name="airline" id="airline" value={filters.airline} onChange={handleFilterChange}>
+                                                    <option value="all">Todas</option>
+                                                    {airlines.map(name => <option key={name} value={name}>{name}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="filter-group">
+                                                <label htmlFor="stops">Paradas</label>
+                                                <select name="stops" id="stops" value={filters.stops} onChange={handleFilterChange}>
+                                                    <option value="all">Qualquer</option>
+                                                    <option value="0">Direto</option>
+                                                    <option value="1">1 Parada</option>
+                                                    <option value="2">2+ Paradas</option>
+                                                </select>
+                                            </div>
+                                            <div className="filter-group">
+                                                <label htmlFor="maxPrice">Preço Máximo (R$)</label>
+                                                <input type="number" name="maxPrice" id="maxPrice" value={filters.maxPrice} onChange={handleFilterChange} placeholder="Ex: 5000" />
                                             </div>
                                         </div>
-                                    )}
+                                        <table className="flights-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Companhia Aérea</th>
+                                                    <th>Paradas</th>
+                                                    <th>Preço (Estimado)</th>
+                                                    <th>Classe</th>
+                                                    <th>Ação</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {displayedFlights.map((flight, index) => {
+                                                    const isSelected = selectedFlight && JSON.stringify(selectedFlight) === JSON.stringify(flight);
+                                                    const flightRow = (
+                                                        <tr 
+                                                            key={index} 
+                                                            ref={displayedFlights.length === index + 1 ? lastFlightElementRef : null}
+                                                            className={isSelected ? 'selected' : ''}
+                                                        >
+                                                            <td>
+                                                            <a href={`https://www.google.com/flights?q=${encodeURIComponent('flights from ' + tripDetails.origin + ' to ' + tripDetails.destinations[0] + ' on ' + tripDetails.startDate)}`} target="_blank" rel="noopener noreferrer">
+                                                                    {flight.airline}
+                                                                </a>
+                                                            </td>
+                                                            <td>{flight.stops === 0 ? 'Direto' : `${flight.stops} parada(s)`}</td>
+                                                            <td>{formatCurrency(flight.price)}</td>
+                                                            <td>{flight.class}</td>
+                                                            <td>
+                                                                <button onClick={() => handleSelectFlight(flight)} className="btn-select-flight">
+                                                                    {isSelected ? 'Selecionado' : 'Selecionar'}
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                    return flightRow;
+                                                })}
+                                            </tbody>
+                                        </table>
+                                        {isLoadingMore && <p className="loading-more">Carregando mais voos...</p>}
+                                        {!isLoadingMore && displayedFlights.length === 0 && <p className="loading-more">Nenhum voo encontrado com os filtros selecionados.</p>}
+                                    </div>
+                                )}
 
-                                    {activeTab === 'voos' && (
-                                        <div className="result-card">
-                                            <h3>
-                                                Opções de Voo Encontradas
-                                                <button className="download-btn" onClick={handleDownloadFlights}>Baixar CSV</button>
-                                            </h3>
-                                            <div className="filters-container">
-                                                <div className="filter-group">
-                                                    <label htmlFor="airline">Companhia Aérea</label>
-                                                    <select name="airline" id="airline" value={filters.airline} onChange={handleFilterChange}>
-                                                        <option value="all">Todas</option>
-                                                        {airlines.map(name => <option key={name} value={name}>{name}</option>)}
-                                                    </select>
-                                                </div>
-                                                <div className="filter-group">
-                                                    <label htmlFor="stops">Paradas</label>
-                                                    <select name="stops" id="stops" value={filters.stops} onChange={handleFilterChange}>
-                                                        <option value="all">Qualquer</option>
-                                                        <option value="0">Direto</option>
-                                                        <option value="1">1 Parada</option>
-                                                        <option value="2">2+ Paradas</option>
-                                                    </select>
-                                                </div>
-                                                <div className="filter-group">
-                                                    <label htmlFor="maxPrice">Preço Máximo (R$)</label>
-                                                    <input type="number" name="maxPrice" id="maxPrice" value={filters.maxPrice} onChange={handleFilterChange} placeholder="Ex: 5000" />
-                                                </div>
-                                            </div>
-                                            <table className="flights-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Companhia Aérea</th>
-                                                        <th>Paradas</th>
-                                                        <th>Preço (Estimado)</th>
-                                                        <th>Classe</th>
-                                                        <th>Ação</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {displayedFlights.map((flight, index) => {
-                                                        const isSelected = selectedFlight && JSON.stringify(selectedFlight) === JSON.stringify(flight);
-                                                        const flightRow = (
-                                                            <tr key={index} className={isSelected ? 'selected' : ''}>
-                                                                <td>
-                                                                <a href={`https://www.google.com/search?q=${encodeURIComponent('flights from ' + tripDetails.origin + ' to ' + tripDetails.destinations[0] + ' with ' + flight.airline)}`} target="_blank" rel="noopener noreferrer">
-                                                                        {flight.airline}
-                                                                    </a>
-                                                                </td>
-                                                                <td>{flight.stops === 0 ? 'Direto' : `${flight.stops} parada(s)`}</td>
-                                                                <td>{formatCurrency(flight.price)}</td>
-                                                                <td>{flight.class}</td>
-                                                                <td>
-                                                                    <button onClick={() => handleSelectFlight(flight)} className="btn-select-flight">
-                                                                        {isSelected ? 'Selecionado' : 'Selecionar'}
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                        );
-
-                                                        if (displayedFlights.length === index + 1) {
-                                                            return (
-                                                                <tr ref={lastFlightElementRef} key={`last-${index}`} className={isSelected ? 'selected' : ''}>
-                                                                    <td>
-                                                                        <a href={`https://www.google.com/search?q=${encodeURIComponent('flights from ' + tripDetails.origin + ' to ' + tripDetails.destinations[0] + ' with ' + flight.airline)}`} target="_blank" rel="noopener noreferrer">
-                                                                            {flight.airline}
-                                                                        </a>
-                                                                    </td>
-                                                                    <td>{flight.stops === 0 ? 'Direto' : `${flight.stops} parada(s)`}</td>
-                                                                    <td>{formatCurrency(flight.price)}</td>
-                                                                    <td>{flight.class}</td>
-                                                                    <td>
-                                                                        <button onClick={() => handleSelectFlight(flight)} className="btn-select-flight">
-                                                                            {isSelected ? 'Selecionado' : 'Selecionar'}
-                                                                        </button>
-                                                                    </td>
-                                                                </tr>
-                                                            )
-                                                        }
-                                                        return flightRow;
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                            {isLoadingMore && <p className="loading-more">Carregando mais voos...</p>}
-                                            {!isLoadingMore && displayedFlights.length === 0 && <p className="loading-more">Nenhum voo encontrado com os filtros selecionados.</p>}
-                                        </div>
-                                    )}
-
-                                    {activeTab === 'mapa' && plan.locations && plan.locations.length > 1 && (
-                                        <div className="result-card route-map">
-                                            <h3>Visualização da Rota</h3>
-                                            <MapContainer 
-                                                bounds={plan.locations.map(loc => [loc.lat, loc.lng])} 
-                                                scrollWheelZoom={false} 
-                                                style={{ height: '400px', width: '100%', borderRadius: '8px' }}
-                                                key={plan.locations.map(l => l.city).join('-')}
-                                            >
-                                                <TileLayer
-                                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                                />
-                                                {plan.locations.map((loc, index) => (
-                                                    <Marker key={index} position={[loc.lat, loc.lng]}>
-                                                        <Popup>{loc.city}</Popup>
-                                                    </Marker>
-                                                ))}
-                                                <Polyline 
-                                                    positions={plan.locations.map(loc => [loc.lat, loc.lng])}
-                                                    color="#005a9e"
-                                                />
-                                                <ResizeMap bounds={plan.locations.map(loc => [loc.lat, loc.lng]) as [number, number][]} />
-                                            </MapContainer>
-                                        </div>
-                                    )}
-                                </div>
+                                {activeTab === 'mapa' && plan.locations && plan.locations.length > 1 && (
+                                    <div className="result-card route-map">
+                                        <h3>Visualização da Rota</h3>
+                                        <MapContainer 
+                                            bounds={plan.locations.map(loc => [loc.lat, loc.lng])} 
+                                            scrollWheelZoom={false} 
+                                            style={{ height: '400px', width: '100%', borderRadius: '8px' }}
+                                            key={plan.locations.map(l => l.city).join('-')}
+                                        >
+                                            <TileLayer
+                                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                            />
+                                            {plan.locations.map((loc, index) => (
+                                                <Marker key={index} position={[loc.lat, loc.lng]}>
+                                                    <Popup>{loc.city}</Popup>
+                                                </Marker>
+                                            ))}
+                                            <Polyline 
+                                                positions={plan.locations.map(loc => [loc.lat, loc.lng])}
+                                                color="#005a9e"
+                                            />
+                                            <ResizeMap bounds={plan.locations.map(loc => [loc.lat, loc.lng]) as [number, number][]} />
+                                        </MapContainer>
+                                    </div>
+                                )}
                             </div>
-                        )}
-                    </section>
-                </main>
+                        </div>
+                    )}
+                </section>
+            </main>
+        </div>
+    );
+};
+
+const ApiKeyEntryScreen = ({ onApiKeySubmit }: { onApiKeySubmit: (key: string) => void }) => {
+    const [localApiKey, setLocalApiKey] = useState('');
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (localApiKey.trim()) {
+            onApiKeySubmit(localApiKey.trim());
+        }
+    };
+
+    return (
+        <div className="api-key-container">
+            <div className="api-key-form">
+                <h2>Bem-vindo ao Planejador de Viagens</h2>
+                <p>Para começar, por favor, insira sua Chave de API (API Key) do Google AI Studio.</p>
+                <form onSubmit={handleSubmit}>
+                    <div className="form-group">
+                        <label htmlFor="apiKey">Sua Chave de API</label>
+                        <input
+                            id="apiKey"
+                            type="text"
+                            value={localApiKey}
+                            onChange={(e) => setLocalApiKey(e.target.value)}
+                            placeholder="Cole sua chave aqui"
+                            required
+                        />
+                    </div>
+                    <button className="btn" type="submit">
+                        Salvar e Continuar
+                    </button>
+                </form>
             </div>
+        </div>
+    );
+};
+
+
+const AppContainer = () => {
+    const [apiKey, setApiKey] = useState<string | null>(() => sessionStorage.getItem('gemini_api_key'));
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        // This effect ensures the loading placeholder is shown at least for a moment
+        // before we check for the API key, preventing a jarring flash of content.
+        const timer = setTimeout(() => {
+            setIsLoading(false);
+        }, 500); // Adjust timing as needed
+
+        return () => clearTimeout(timer);
+    }, []);
+
+    const handleApiKeySubmit = (key: string) => {
+        sessionStorage.setItem('gemini_api_key', key);
+        setApiKey(key);
+    };
+
+    if (isLoading) {
+        return (
+            <div className="app-loading-placeholder">
+                <div className="loading-spinner"></div>
+                <p>Carregando planejador de viagens...</p>
+            </div>
+        )
+    }
+
+    return (
+        <>
+            <header>
+                <h1>Planejador de Viagens do Ernest</h1>
+            </header>
+            {apiKey ? (
+                <App apiKey={apiKey} />
+            ) : (
+                <ApiKeyEntryScreen onApiKeySubmit={handleApiKeySubmit} />
+            )}
         </>
     );
 };
 
+
 const container = document.getElementById('root');
 if (container) {
     const root = createRoot(container);
-
-    const initializeApp = () => {
-        let apiKey = sessionStorage.getItem('gemini_api_key');
-        if (!apiKey) {
-            apiKey = prompt("Por favor, insira sua Chave de API (API Key) do Google AI Studio:", "");
-            if (apiKey) {
-                sessionStorage.setItem('gemini_api_key', apiKey);
-            }
-        }
-
-        if (apiKey) {
-            root.render(<App />);
-        } else {
-            root.render(
-                <>
-                    <header>
-                        <h1>Planejador de Viagens do Ernest</h1>
-                    </header>
-                    <div className="container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '4rem' }}>
-                        <div className="error-message" style={{textAlign: 'center', maxWidth: '600px'}}>
-                            <h2>Chave de API Necessária</h2>
-                            <p>Uma Chave de API (API Key) do Google AI Studio é necessária para usar esta aplicação.<br/>Por favor, atualize a página para inserir sua chave.</p>
-                        </div>
-                    </div>
-                </>
-            );
-        }
-    };
-
-    initializeApp();
+    root.render(<AppContainer />);
 }
