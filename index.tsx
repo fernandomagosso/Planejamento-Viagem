@@ -82,20 +82,6 @@ interface HistoryItem {
   details: TripDetails;
 }
 
-const ApiKeyMissingScreen = () => (
-    <>
-        <header>
-            <h1>Planejador de Viagens do Ernest</h1>
-        </header>
-        <div className="container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '4rem' }}>
-            <div className="error-message" style={{textAlign: 'center', maxWidth: '600px'}}>
-                <h2>Chave de API não configurada</h2>
-                <p>A chave de API do Google AI Studio não foi encontrada.<br/>Por favor, configure a variável de ambiente <strong>API_KEY</strong> para usar a aplicação.</p>
-            </div>
-        </div>
-    </>
-);
-
 const ResizeMap = ({ bounds }: { bounds: [number, number][] }) => {
     const map = useMap();
     useEffect(() => {
@@ -298,8 +284,9 @@ const App = () => {
     };
 
     const generatePlan = async () => {
-        if (!process.env.API_KEY) {
-            setError('A chave de API não está configurada. Por favor, configure a variável de ambiente API_KEY.');
+        const apiKey = sessionStorage.getItem('gemini_api_key');
+        if (!apiKey) {
+            setError('A chave de API não foi encontrada. Por favor, recarregue a página e insira sua chave.');
             return;
         }
 
@@ -320,7 +307,7 @@ const App = () => {
         }
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenAI({ apiKey: apiKey });
             
             const schema = {
                 type: Type.OBJECT,
@@ -964,9 +951,34 @@ Retorne um objeto JSON seguindo o schema fornecido. Todos os custos devem ser n�
 const container = document.getElementById('root');
 if (container) {
     const root = createRoot(container);
-    if (process.env.API_KEY) {
-        root.render(<App />);
-    } else {
-        root.render(<ApiKeyMissingScreen />);
-    }
+
+    const initializeApp = () => {
+        let apiKey = sessionStorage.getItem('gemini_api_key');
+        if (!apiKey) {
+            apiKey = prompt("Por favor, insira sua Chave de API (API Key) do Google AI Studio:", "");
+            if (apiKey) {
+                sessionStorage.setItem('gemini_api_key', apiKey);
+            }
+        }
+
+        if (apiKey) {
+            root.render(<App />);
+        } else {
+            root.render(
+                <>
+                    <header>
+                        <h1>Planejador de Viagens do Ernest</h1>
+                    </header>
+                    <div className="container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '4rem' }}>
+                        <div className="error-message" style={{textAlign: 'center', maxWidth: '600px'}}>
+                            <h2>Chave de API Necessária</h2>
+                            <p>Uma Chave de API (API Key) do Google AI Studio é necessária para usar esta aplicação.<br/>Por favor, atualize a página para inserir sua chave.</p>
+                        </div>
+                    </div>
+                </>
+            );
+        }
+    };
+
+    initializeApp();
 }
