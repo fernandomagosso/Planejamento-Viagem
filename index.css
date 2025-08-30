@@ -1,0 +1,365 @@
+:root {
+  --primary-color: #003366;
+  --secondary-color: #005a9e;
+  --accent-color: #4db8ff;
+  --background-color: #f4f7f9;
+  --text-color: #333;
+  --white-color: #ffffff;
+  --border-color: #dce4e9;
+  --shadow-color: rgba(0, 0, 0, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Poppins', sans-serif;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  line-height: 1.6;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+header {
+  background-color: var(--primary-color);
+  color: var(--white-color);
+  padding: 1.5rem 2rem;
+  text-align: center;
+  box-shadow: 0 2px 4px var(--shadow-color);
+}
+
+header h1 {
+  font-weight: 600;
+  font-size: 2rem;
+}
+
+main {
+  display: grid;
+  grid-template-columns: 40% 1fr;
+  gap: 2rem;
+  flex-grow: 1;
+  width: 100%;
+}
+
+.planner-form, .results-display {
+  background-color: var(--white-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 6px var(--shadow-color);
+  padding: 2rem;
+  height: fit-content;
+}
+
+.planner-form h2 {
+  color: var(--primary-color);
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group input[type="date"],
+.form-group select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 1rem;
+  font-family: 'Poppins', sans-serif;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(77, 184, 255, 0.2);
+}
+
+.radio-group {
+  display: flex;
+  gap: 1rem;
+}
+.radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.destinations-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.destinations-group input {
+  flex-grow: 1;
+}
+
+.destinations-list {
+  list-style: none;
+  padding-left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.destination-tag {
+  background-color: var(--accent-color);
+  color: var(--white-color);
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.destination-tag button {
+  background: none;
+  border: none;
+  color: var(--white-color);
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.passengers-group, .date-range-group {
+  display: flex;
+  gap: 1rem;
+}
+.passengers-group > div, .date-range-group > div {
+  flex: 1;
+}
+
+.checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn {
+  display: inline-block;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background-color: var(--secondary-color);
+  color: var(--white-color);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 0.3s, transform 0.1s;
+}
+
+.btn:hover:not(:disabled) {
+  background-color: var(--primary-color);
+}
+
+.btn:disabled {
+  background-color: #a0a0a0;
+  cursor: not-allowed;
+}
+
+.btn-sm {
+    width: auto;
+    padding: 0.5rem 1rem;
+}
+
+.results-placeholder {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  text-align: center;
+  color: #777;
+}
+
+.results-placeholder svg {
+    width: 80px;
+    height: 80px;
+    margin-bottom: 1rem;
+    color: var(--accent-color);
+}
+
+
+.loading-spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border-left-color: var(--primary-color);
+  animation: spin 1s ease infinite;
+  margin: 2rem auto;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.results-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.result-card {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.result-card h3 {
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.download-btn, .save-btn {
+    font-size: 0.9rem;
+    padding: 0.4rem 0.8rem;
+    background-color: var(--white-color);
+    color: var(--secondary-color);
+    border: 1px solid var(--secondary-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+.download-btn:hover, .save-btn:hover:not(:disabled) {
+    background-color: var(--secondary-color);
+    color: var(--white-color);
+}
+
+.save-btn:disabled {
+    background-color: #28a745;
+    border-color: #28a745;
+    color: var(--white-color);
+    cursor: default;
+}
+
+
+.checklist-item {
+    margin-bottom: 0.75rem;
+}
+.checklist-item strong {
+    display: block;
+    font-weight: 600;
+}
+.checklist-item p {
+    font-size: 0.95rem;
+    color: #555;
+    margin-left: 1rem;
+}
+
+.filters-container {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.filter-group {
+  flex: 1;
+  min-width: 160px;
+}
+.filter-group label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  display: block;
+}
+
+.flights-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.flights-table th, .flights-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+.flights-table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+}
+.flights-table tbody tr:hover {
+    background-color: #f1f5f8;
+}
+.flights-table a {
+  color: var(--secondary-color);
+  text-decoration: none;
+  font-weight: 500;
+}
+.flights-table a:hover {
+  text-decoration: underline;
+}
+
+.loading-more {
+  text-align: center;
+  padding: 1rem;
+  color: var(--secondary-color);
+  font-style: italic;
+}
+
+.error-message {
+    color: #D8000C;
+    background-color: #FFD2D2;
+    border: 1px solid #D8000C;
+    padding: 1rem;
+    border-radius: 6px;
+    text-align: center;
+}
+
+@media (max-width: 1024px) {
+    main {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 1rem;
+    }
+    header h1 {
+        font-size: 1.5rem;
+    }
+    .planner-form, .results-display {
+        padding: 1.5rem;
+    }
+    .passengers-group, .date-range-group, .filters-container {
+        flex-direction: column;
+        gap: 1.25rem;
+        align-items: stretch;
+    }
+}
