@@ -730,6 +730,76 @@ main {
     text-align: right;
 }
 
+.destination-image-container {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background-color: #e9ecef;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+
+.destination-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.image-loading-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: #777;
+}
+
+.image-loading-placeholder .loading-spinner {
+    margin: 0 0 1rem 0;
+}
+
+.packing-list-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+}
+
+.packing-category h4 {
+    color: var(--secondary-color);
+    margin-bottom: 1rem;
+    border-bottom: 2px solid var(--accent-color);
+    padding-bottom: 0.5rem;
+}
+
+.packing-items-list {
+    list-style: none;
+    padding: 0;
+}
+
+.packing-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.packing-item input[type="checkbox"] {
+    width: 1.15rem;
+    height: 1.15rem;
+    flex-shrink: 0;
+}
+
+.packing-item label {
+    cursor: pointer;
+    font-size: 0.95rem;
+}
+
+.packing-item.packed label {
+    text-decoration: line-through;
+    color: #888;
+}
+
 
 @media (max-width: 768px) {
     .container {

@@ -22,6 +22,17 @@ interface ChecklistItem {
     completed: boolean;
 }
 
+interface PackingItem {
+    item: string;
+    quantity: number;
+    packed: boolean;
+}
+
+interface PackingCategory {
+    category: string;
+    items: PackingItem[];
+}
+
 interface WeatherInfo {
     destination: string;
     avg_temp_celsius: number;
@@ -43,6 +54,7 @@ interface ItineraryDestination {
     transport_tips: string;
     safety_tips: string;
     food_recommendations: FoodRecommendation[];
+    imageUrl?: string | 'loading' | null;
 }
 
 interface CostDetails {
@@ -60,6 +72,7 @@ interface Plan {
     flights: Flight[];
     locations: Location[];
     weather: WeatherInfo[];
+    packing_list: PackingCategory[];
 }
 
 type TripDetails = {
@@ -149,7 +162,11 @@ const App = () => {
                 if (savedPlan && savedTripDetails) {
                     const planWithCheckedState = {
                         ...savedPlan,
-                        checklist: savedPlan.checklist.map(item => ({ ...item, completed: item.completed || false }))
+                        checklist: savedPlan.checklist.map(item => ({ ...item, completed: item.completed || false })),
+                        packing_list: savedPlan.packing_list?.map(cat => ({
+                            ...cat,
+                            items: cat.items.map(item => ({...item, packed: item.packed || false}))
+                        }))
                     };
                     setPlan(planWithCheckedState);
                     setTripDetails(savedTripDetails);
@@ -274,6 +291,18 @@ const App = () => {
         setIsSaved(false); // Indicate there are unsaved changes
     };
 
+    const handlePackingListToggle = (categoryIndex: number, itemIndex: number) => {
+        if (!plan) return;
+        const newPackingList = [...plan.packing_list];
+        const category = { ...newPackingList[categoryIndex] };
+        const item = { ...category.items[itemIndex] };
+        item.packed = !item.packed;
+        category.items[itemIndex] = item;
+        newPackingList[categoryIndex] = category;
+        setPlan(prevPlan => ({ ...prevPlan!, packing_list: newPackingList }));
+        setIsSaved(false);
+    };
+
     const handleSelectFlight = (flight: Flight) => {
         if (selectedFlight && JSON.stringify(selectedFlight) === JSON.stringify(flight)) {
             setSelectedFlight(null); // Deselect if the same flight is clicked again
@@ -281,6 +310,52 @@ const App = () => {
             setSelectedFlight(flight);
         }
         setIsSaved(false);
+    };
+
+    const generateDestinationImages = async (ai: GoogleGenAI, destinations: ItineraryDestination[]) => {
+        // Set loading state for all images
+        setPlan(prevPlan => {
+            if (!prevPlan) return null;
+            const updatedItinerary = prevPlan.itinerary.map(dest => ({ ...dest, imageUrl: 'loading' }));
+            return { ...prevPlan, itinerary: updatedItinerary };
+        });
+
+        const imagePromises = destinations.map(dest => 
+            ai.models.generateImages({
+                model: 'imagen-4.0-generate-001',
+                prompt: `A beautiful, photorealistic, high-quality travel photograph of ${dest.destination_name}, capturing its essence. No text or people in the foreground.`,
+                 config: {
+                    numberOfImages: 1,
+                    outputMimeType: 'image/jpeg',
+                    aspectRatio: '16:9',
+                 },
+            }).catch(e => {
+                console.error(`Failed to generate image for ${dest.destination_name}`, e);
+                return null; // Return null on failure
+            })
+        );
+    
+        const results = await Promise.allSettled(imagePromises);
+    
+        results.forEach((result, index) => {
+            if (result.status === 'fulfilled' && result.value && result.value.generatedImages.length > 0) {
+                const base64Image = result.value.generatedImages[0].image.imageBytes;
+                setPlan(prevPlan => {
+                    if (!prevPlan) return null;
+                    const updatedItinerary = [...prevPlan.itinerary];
+                    updatedItinerary[index].imageUrl = `data:image/jpeg;base64,${base64Image}`;
+                    return { ...prevPlan, itinerary: updatedItinerary };
+                });
+            } else {
+                // Handle failure
+                setPlan(prevPlan => {
+                    if (!prevPlan) return null;
+                    const updatedItinerary = [...prevPlan.itinerary];
+                    updatedItinerary[index].imageUrl = null; // Set to null on error
+                    return { ...prevPlan, itinerary: updatedItinerary };
+                });
+            }
+        });
     };
 
     const generatePlan = async () => {
@@ -369,6 +444,26 @@ const App = () => {
                             },
                         },
                     },
+                     packing_list: {
+                        type: Type.ARRAY,
+                        description: "Lista de bagagem personalizada e categorizada com base nos destinos, clima e tipo de viagem.",
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                category: { type: Type.STRING, description: "Categoria dos itens (ex: 'Roupas', 'Documentos', 'Eletrônicos')." },
+                                items: {
+                                    type: Type.ARRAY,
+                                    items: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            item: { type: Type.STRING, description: "O item a ser embalado." },
+                                            quantity: { type: Type.INTEGER, description: "A quantidade sugerida." },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
                     flights: {
                         type: Type.ARRAY,
                         description: "Opções de voos, com no mínimo 30 opções",
@@ -428,6 +523,8 @@ Para cada destino, inclua:
 4.  Dicas importantes de segurança.
 5.  Recomendações da culinária local com nome e descrição dos pratos.
 
+Adicionalmente, crie uma lista de bagagem ('packing_list') completa e categorizada, baseada nos destinos, clima e tipo de viagem.
+
 Retorne um objeto JSON seguindo o schema fornecido. Todos os custos devem ser números em Reais Brasileiros (BRL), sem símbolos (ex: 3500.00). O número de paradas deve ser um inteiro (ex: 0). Inclua coordenadas geográficas para origem e destinos e a previsão do tempo.`;
             
             const response = await ai.models.generateContent({
@@ -452,12 +549,19 @@ Retorne um objeto JSON seguindo o schema fornecido. Todos os custos devem ser n�
                 const jsonResponse = JSON.parse(responseText);
                 const planWithChecklistState: Plan = {
                     ...jsonResponse,
-                    checklist: jsonResponse.checklist.map((item: any) => ({ ...item, completed: false }))
+                    checklist: jsonResponse.checklist.map((item: any) => ({ ...item, completed: false })),
+                    packing_list: jsonResponse.packing_list?.map((cat: any) => ({
+                        ...cat,
+                        items: cat.items.map((item: any) => ({ ...item, packed: false }))
+                    })) || []
                 };
 
                 setPlan(planWithChecklistState);
                 setActiveTab('roteiro');
                 setCurrentItineraryPage(0);
+                
+                // Generate images after setting the plan
+                generateDestinationImages(ai, planWithChecklistState.itinerary);
 
                 const newHistoryItem: HistoryItem = {
                     id: new Date().toISOString(),
@@ -675,7 +779,8 @@ Retorne um objeto JSON seguindo o schema fornecido. Todos os custos devem ser n�
                                 </div>
 
                                 <div className="tabs">
-                                    <button className={`tab-item ${activeTab === 'roteiro' ? 'active' : ''}`} onClick={() => setActiveTab('roteiro')}>Roteiro Detalhado</button>
+                                    <button className={`tab-item ${activeTab === 'roteiro' ? 'active' : ''}`} onClick={() => setActiveTab('roteiro')}>Roteiro</button>
+                                    <button className={`tab-item ${activeTab === 'bagagem' ? 'active' : ''}`} onClick={() => setActiveTab('bagagem')}>O que levar</button>
                                     <button className={`tab-item ${activeTab === 'orcamento' ? 'active' : ''}`} onClick={() => setActiveTab('orcamento')}>Orçamento</button>
                                     <button className={`tab-item ${activeTab === 'checklist' ? 'active' : ''}`} onClick={() => setActiveTab('checklist')}>Checklist</button>
                                     <button className={`tab-item ${activeTab === 'clima' ? 'active' : ''}`} onClick={() => setActiveTab('clima')}>Previsão do Tempo</button>
@@ -692,6 +797,17 @@ Retorne um objeto JSON seguindo o schema fornecido. Todos os custos devem ser n�
                                                 return (
                                                     <>
                                                         <h3>Roteiro para: {currentItinerary.destination_name}</h3>
+                                                         <div className="destination-image-container">
+                                                            {currentItinerary.imageUrl === 'loading' && (
+                                                                <div className="image-loading-placeholder">
+                                                                    <div className="loading-spinner"></div>
+                                                                    <p>Gerando imagem...</p>
+                                                                </div>
+                                                            )}
+                                                            {currentItinerary.imageUrl && currentItinerary.imageUrl.startsWith('data:') && (
+                                                                <img src={currentItinerary.imageUrl} alt={`Imagem de ${currentItinerary.destination_name}`} className="destination-image" />
+                                                            )}
+                                                        </div>
                                                         <p>{currentItinerary.destination_summary}</p>
                                                         
                                                         <div className="itinerary-section">
@@ -745,6 +861,34 @@ Retorne um objeto JSON seguindo o schema fornecido. Todos os custos devem ser n�
                                                 >
                                                     Próximo &rarr;
                                                 </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeTab === 'bagagem' && (
+                                        <div className="result-card">
+                                            <h3>O que levar na sua viagem</h3>
+                                            <div className="packing-list-container">
+                                                {plan.packing_list?.map((category, catIndex) => (
+                                                    <div key={category.category} className="packing-category">
+                                                        <h4>{category.category}</h4>
+                                                        <ul className="packing-items-list">
+                                                            {category.items.map((item, itemIndex) => (
+                                                                <li key={item.item} className={`packing-item ${item.packed ? 'packed' : ''}`}>
+                                                                     <input 
+                                                                        type="checkbox" 
+                                                                        id={`pack-${catIndex}-${itemIndex}`} 
+                                                                        checked={item.packed} 
+                                                                        onChange={() => handlePackingListToggle(catIndex, itemIndex)} 
+                                                                    />
+                                                                    <label htmlFor={`pack-${catIndex}-${itemIndex}`}>
+                                                                        {item.item} {item.quantity > 1 ? `(x${item.quantity})` : ''}
+                                                                    </label>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     )}
