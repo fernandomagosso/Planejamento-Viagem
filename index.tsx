@@ -37,8 +37,21 @@ interface Plan {
     locations: Location[];
 }
 
+const ApiKeyMissingScreen = () => (
+    <>
+        <header>
+            <h1>Planejador de Viagens do Ernest</h1>
+        </header>
+        <div className="container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '4rem' }}>
+            <div className="error-message" style={{textAlign: 'center', maxWidth: '600px'}}>
+                <h2>Chave de API não configurada</h2>
+                <p>A chave de API do Google AI Studio não foi encontrada.<br/>Por favor, configure a variável de ambiente <strong>API_KEY</strong> para usar a aplicação.</p>
+            </div>
+        </div>
+    </>
+);
+
 const App = () => {
-    const [apiKeyMissing, setApiKeyMissing] = useState(false);
     const [tripDetails, setTripDetails] = useState({
         prediction: new Date().getFullYear() + 1,
         type: 'Internacional',
@@ -72,11 +85,6 @@ const App = () => {
     const FLIGHTS_PER_PAGE = 10;
 
     useEffect(() => {
-        if (!process.env.API_KEY) {
-            setApiKeyMissing(true);
-            return;
-        }
-        
         try {
             const savedPlanData = localStorage.getItem('ernest-travel-plan');
             if (savedPlanData) {
@@ -341,22 +349,6 @@ const App = () => {
         downloadFile(csvContent, 'opcoes_voo.csv', 'text/csv;charset=utf-8;');
     };
 
-    if (apiKeyMissing) {
-        return (
-            <>
-                <header>
-                    <h1>Planejador de Viagens do Ernest</h1>
-                </header>
-                <div className="container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '4rem' }}>
-                    <div className="error-message" style={{textAlign: 'center', maxWidth: '600px'}}>
-                        <h2>Chave de API não configurada</h2>
-                        <p>A chave de API do Google AI Studio não foi encontrada.<br/>Por favor, configure a variável de ambiente <strong>API_KEY</strong> para usar a aplicação.</p>
-                    </div>
-                </div>
-            </>
-        );
-    }
-
     return (
         <>
             <header>
@@ -600,5 +592,9 @@ const App = () => {
 const container = document.getElementById('root');
 if (container) {
     const root = createRoot(container);
-    root.render(<App />);
+    if (process.env.API_KEY) {
+        root.render(<App />);
+    } else {
+        root.render(<ApiKeyMissingScreen />);
+    }
 }
