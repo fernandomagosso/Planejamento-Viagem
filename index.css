@@ -98,6 +98,7 @@ main {
 }
 
 .form-group input[type="text"],
+.form-group input[type="password"],
 .form-group input[type="number"],
 .form-group input[type="date"],
 .form-group select {
@@ -837,6 +838,34 @@ main {
     color: #888;
 }
 
+.real-flights-search {
+    background-color: #f8f9fa;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.real-flights-search h4 {
+    color: var(--primary-color);
+    margin-bottom: 0.5rem;
+}
+
+.real-flights-search p {
+    font-size: 0.9rem;
+    color: #555;
+    margin-bottom: 1rem;
+}
+
+.real-flights-search .form-group {
+    margin-bottom: 1rem;
+}
+
+.real-flights-search .btn {
+    width: auto;
+    margin-top: 0;
+    padding: 0.75rem 1.5rem;
+}
 
 @media (max-width: 768px) {
     .container {

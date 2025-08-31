@@ -15,6 +15,7 @@ interface Location {
     city: string;
     lat: number;
     lng: number;
+    iata: string;
 }
 
 interface ChecklistItem {
@@ -145,6 +146,9 @@ const App = ({ apiKey }: { apiKey: string }) => {
     const [activeTab, setActiveTab] = useState('roteiro');
     const [currentItineraryPage, setCurrentItineraryPage] = useState(0);
     const [selectedFlight, setSelectedFlight] = useState<Flight | null>(null);
+    const [rapidApiKey, setRapidApiKey] = useState('');
+    const [isFetchingRealFlights, setIsFetchingRealFlights] = useState(false);
+    const [realFlightsError, setRealFlightsError] = useState('');
 
     const [filters, setFilters] = useState({
         airline: 'all',
@@ -365,6 +369,7 @@ const App = ({ apiKey }: { apiKey: string }) => {
         setPlan(null);
         setIsSaved(false);
         setSelectedFlight(null);
+        setRealFlightsError('');
 
         if (tripDetails.startDate && tripDetails.endDate) {
             const startDate = new Date(tripDetails.startDate);
@@ -474,15 +479,16 @@ const App = ({ apiKey }: { apiKey: string }) => {
                     },
                     locations: {
                         type: Type.ARRAY,
-                        description: "Lista de coordenadas geográficas para a origem e todos os destinos na ordem da viagem.",
+                        description: "Lista de coordenadas geográficas e CÓDIGOS IATA DE AEROPORTO para a origem e todos os destinos na ordem da viagem.",
                         items: {
                             type: Type.OBJECT,
                             properties: {
                                 city: { type: Type.STRING, description: "Nome da cidade" },
                                 lat: { type: Type.NUMBER, description: "Latitude da cidade" },
                                 lng: { type: Type.NUMBER, description: "Longitude da cidade" },
+                                iata: { type: Type.STRING, description: "Código IATA do principal aeroporto da cidade (ex: GRU para São Paulo)." },
                             },
-                            required: ['city', 'lat', 'lng']
+                            required: ['city', 'lat', 'lng', 'iata']
                         }
                     },
                     weather: {
@@ -519,6 +525,7 @@ Para cada destino, inclua:
 5.  Recomendações da culinária local com nome e descrição dos pratos.
 
 Adicionalmente, crie uma lista de bagagem ('packing_list') completa e categorizada, baseada nos destinos, clima e tipo de viagem.
+Forneça os códigos IATA dos aeroportos para a origem e cada destino.
 
 Retorne um objeto JSON seguindo o schema fornecido. Todos os custos devem ser números em Reais Brasileiros (BRL), sem símbolos (ex: 3500.00). O número de paradas deve ser um inteiro (ex: 0). Inclua coordenadas geográficas para origem e destinos e a previsão do tempo.`;
             
@@ -589,6 +596,76 @@ Retorne um objeto JSON seguindo o schema fornecido. Todos os custos devem ser n�
             setLoading(false);
         }
     };
+
+    const fetchRealFlights = async () => {
+        if (!rapidApiKey) {
+            setRealFlightsError('Por favor, insira sua chave da RapidAPI.');
+            return;
+        }
+        if (!plan?.locations || plan.locations.length < 2 || !tripDetails.startDate) {
+            setRealFlightsError('Dados da viagem (origem, destino, data) insuficientes para a busca.');
+            return;
+        }
+
+        setIsFetchingRealFlights(true);
+        setRealFlightsError('');
+
+        const fromId = plan.locations[0].iata;
+        const toId = plan.locations[1].iata;
+        const date = tripDetails.startDate;
+        const adults = tripDetails.adults;
+        const cabinClass = tripDetails.class === 'Executiva' ? 'BUSINESS' : tripDetails.class === 'Primeira Classe' ? 'FIRST' : 'ECONOMY';
+
+        const url = `https://booking-com15.p.rapidapi.com/api/v1/flights/searchFlights?fromId=${fromId}.AIRPORT&toId=${toId}.AIRPORT&departDate=${date}&adults=${adults}&children=0&sort=BEST&cabinClass=${cabinClass}&currency_code=BRL`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'x-rapidapi-key': rapidApiKey,
+                    'x-rapidapi-host': 'booking-com15.p.rapidapi.com'
+                }
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => null);
+                throw new Error(`HTTP error! status: ${response.status} - ${errorData?.message || 'Erro desconhecido'}`);
+            }
+
+            const result = await response.json();
+
+            if (result.data && result.data.flights) {
+                const realFlights: Flight[] = result.data.flights.map((flight: any) => {
+                    const priceInfo = flight.purchaseLinks[0]?.totalPrice;
+                    return {
+                        airline: flight.legs[0]?.carriers[0]?.name || 'N/A',
+                        stops: flight.legs[0]?.stopoversCount || 0,
+                        price: typeof priceInfo === 'string' ? parseFloat(priceInfo.replace(/,/g, '')) : priceInfo || 0,
+                        class: tripDetails.class,
+                    };
+                }).filter((f: Flight) => f.price > 0);
+
+                if (realFlights.length === 0) {
+                    setRealFlightsError('Nenhum voo real encontrado para esta rota/data.');
+                }
+                 setPlan(prevPlan => {
+                    if (!prevPlan) return null;
+                    return { ...prevPlan, flights: realFlights };
+                });
+                setSelectedFlight(null);
+
+            } else {
+                 setRealFlightsError('Nenhum voo real encontrado na resposta da API.');
+            }
+
+        } catch (err) {
+            console.error("Error fetching real flights:", err);
+            setRealFlightsError(`Falha ao buscar voos: ${err instanceof Error ? err.message : 'Verifique sua chave e a rota.'}`);
+        } finally {
+            setIsFetchingRealFlights(false);
+        }
+    };
+
 
     const handleSavePlan = () => {
         if (plan) {
@@ -965,6 +1042,27 @@ Retorne um objeto JSON seguindo o schema fornecido. Todos os custos devem ser n�
                                             Opções de Voo Encontradas
                                             <button className="download-btn" onClick={handleDownloadFlights}>Baixar CSV</button>
                                         </h3>
+                                        <div className="real-flights-search">
+                                            <h4>Busca de Voos em Tempo Real (Booking.com)</h4>
+                                            {plan.locations && plan.locations.length > 1 && (
+                                                <p>Insira sua chave da RapidAPI para buscar voos reais para o primeiro trecho da viagem ({plan.locations[0].city} → {plan.locations[1].city}).</p>
+                                            )}
+                                            <div className="form-group">
+                                                <label htmlFor="rapidApiKey">Sua Chave da RapidAPI</label>
+                                                <input
+                                                    type="password"
+                                                    id="rapidApiKey"
+                                                    value={rapidApiKey}
+                                                    onChange={(e) => setRapidApiKey(e.target.value)}
+                                                    placeholder="Cole sua chave da RapidAPI aqui"
+                                                />
+                                            </div>
+                                            <button className="btn" onClick={fetchRealFlights} disabled={isFetchingRealFlights || !tripDetails.startDate}>
+                                                {isFetchingRealFlights ? 'Buscando...' : 'Buscar Voos Reais'}
+                                            </button>
+                                            {realFlightsError && <p className="error-message" style={{marginTop: '1rem'}}>{realFlightsError}</p>}
+                                        </div>
+
                                         <div className="filters-container">
                                             <div className="filter-group">
                                                 <label htmlFor="airline">Companhia Aérea</label>
@@ -1085,7 +1183,7 @@ const ApiKeyEntryScreen = ({ onApiKeySubmit }: { onApiKeySubmit: (key: string) =
                         <label htmlFor="apiKey">Sua Chave de API</label>
                         <input
                             id="apiKey"
-                            type="text"
+                            type="password"
                             value={localApiKey}
                             onChange={(e) => setLocalApiKey(e.target.value)}
                             placeholder="Cole sua chave aqui"
